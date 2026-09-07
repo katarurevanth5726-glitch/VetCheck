@@ -88,7 +88,7 @@ async function generateWithModelFallback({
   parts,
   systemInstruction,
   jsonSchema,
-  candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+  candidateModels = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
 }: {
   parts: any[];
   systemInstruction: string;
@@ -175,7 +175,7 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "VetCheck API",
-    models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+    models: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
   });
 });
 
@@ -346,7 +346,7 @@ Respond strictly in structured JSON.`;
       parts,
       systemInstruction,
       jsonSchema: validationSchema,
-      candidateModels: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
     });
 
     const sanitizedRaw = result.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
@@ -669,7 +669,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
   ];
 
   let rawResponseText = "";
-  let modelUsed = "gemini-2.5-flash";
+  let modelUsed = "gemini-3.5-flash";
   let geminiDuration = 0;
 
   try {
@@ -677,7 +677,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
       parts,
       systemInstruction,
       jsonSchema,
-      candidateModels: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
     });
     rawResponseText = result.text;
     modelUsed = result.modelUsed;
@@ -1006,7 +1006,7 @@ Evaluate visible changes and return strictly JSON.`;
       parts,
       systemInstruction,
       jsonSchema,
-      candidateModels: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
     });
 
     let parsed: any;
