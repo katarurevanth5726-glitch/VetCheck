@@ -1035,7 +1035,17 @@ Evaluate visible changes and return strictly JSON.`;
   }
 });
 
-// Explicit API 404 Handler (Prevents API requests from falling through to Vite SPA index.html)
+// Root endpoint for API status and health check reference
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "VetCheck API Server",
+    version: "1.0.0",
+    health: "/api/health",
+  });
+});
+
+// Explicit API 404 Handler
 app.all("/api/*", (req, res) => {
   res.status(404).json({
     error: `API route not found: ${req.method} ${req.originalUrl}`,
@@ -1043,7 +1053,7 @@ app.all("/api/*", (req, res) => {
   });
 });
 
-// Setup Vite or Static File Serving
+// Setup Vite in Dev or API-only Fallback in Production
 async function startServer() {
   const isProd =
     process.env.NODE_ENV === "production" ||
@@ -1071,16 +1081,19 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
   }
 
+  // Fallback 404 handler for unknown non-API routes in API-only mode (Render/production)
+  app.use((req, res) => {
+    res.status(404).json({
+      error: `Not Found: ${req.method} ${req.originalUrl}`,
+      message: "VetCheck backend is API-only. Frontend is hosted on Firebase Hosting.",
+      code: 404,
+    });
+  });
+
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`VetCheck server running on http://0.0.0.0:${PORT}`);
+    console.log(`VetCheck API server running on http://0.0.0.0:${PORT}`);
     startReminderScheduler(30000);
   });
 }
