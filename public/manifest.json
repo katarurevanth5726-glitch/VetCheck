@@ -1,0 +1,43 @@
+{
+  "name": "VetCheck — AI Animal Health & Care Reminders",
+  "short_name": "VetCheck",
+  "description": "Multilingual AI animal health screening, visual early triage, vaccination & deworming background care reminders for pet owners and farmers.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "orientation": "portrait-primary",
+  "categories": ["medical", "health", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Scan Animal",
+      "short_name": "Scan",
+      "description": "Quickly scan animal symptoms or condition",
+      "url": "/?tab=scan",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Animals",
+      "short_name": "Animals",
+      "description": "View animal profiles and care reminders",
+      "url": "/?tab=my-animals",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Emergency 1962",
+      "short_name": "Emergency",
+      "description": "1962 Veterinary helpline & immediate first aid",
+      "url": "/?tab=emergency",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    }
+  ]
+}

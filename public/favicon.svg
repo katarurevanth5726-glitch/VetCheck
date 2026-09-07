@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e" />
+      <stop offset="50%" stop-color="#115e59" />
+      <stop offset="100%" stop-color="#042f2e" />
+    </linearGradient>
+    <linearGradient id="pawGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Medical Shield -->
+  <path d="M64 10 C88 22 108 26 112 36 C114 68 102 96 64 118 C26 96 14 68 16 36 C20 26 40 22 64 10 Z" fill="url(#shieldGrad)" stroke="#10b981" stroke-width="3" stroke-linejoin="round" />
+
+  <!-- Scanning Reticle Corners -->
+  <path d="M36 38 L28 38 L28 46" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M92 38 L100 38 L100 46" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M28 82 L28 90 L36 90" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M100 82 L100 90 L92 90" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+
+  <!-- Animal Paw Print -->
+  <ellipse cx="43" cy="46" rx="6.5" ry="9" transform="rotate(-18 43 46)" fill="url(#pawGrad)" />
+  <ellipse cx="56" cy="40" rx="6.5" ry="9.5" transform="rotate(-5 56 40)" fill="url(#pawGrad)" />
+  <ellipse cx="72" cy="40" rx="6.5" ry="9.5" transform="rotate(5 72 40)" fill="url(#pawGrad)" />
+  <ellipse cx="85" cy="46" rx="6.5" ry="9" transform="rotate(18 85 46)" fill="url(#pawGrad)" />
+
+  <!-- Central Paw Metacarpal Pad with embedded Cross -->
+  <path d="M46 64 C42 67 40 73 45 79 C51 86 58 88 64 88 C70 88 77 86 83 79 C88 73 86 67 82 64 C77 60 71 63 64 63 C57 63 51 60 46 64 Z" fill="url(#pawGrad)" />
+
+  <!-- Medical Cross embedded in central pad -->
+  <rect x="61" y="68" width="6" height="14" rx="2" fill="#ffffff" />
+  <rect x="57" y="72" width="14" height="6" rx="2" fill="#ffffff" />
+</svg>

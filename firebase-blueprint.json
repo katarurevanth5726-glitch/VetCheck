@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "Animal": {
+      "collection": "animals",
+      "fields": {
+        "id": { "type": "string", "description": "Local/client document ID" },
+        "animalId": { "type": "string", "description": "Persistent tag ID like VC-RKY-1024" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "name": { "type": "string", "description": "Animal name" },
+        "species": { "type": "string", "description": "Animal species" },
+        "breed": { "type": "string", "description": "Breed if known" },
+        "age": { "type": "string", "description": "Age" },
+        "sex": { "type": "string", "description": "Sex" },
+        "photoUri": { "type": "string", "description": "Photo reference or compressed preview URL" },
+        "notes": { "type": "string", "description": "Medical notes or tags" },
+        "vaccinationStatus": { "type": "string", "description": "Current vaccination text" },
+        "qrPrivacySettings": { "type": "object", "description": "Privacy preferences for QR card" },
+        "createdAt": { "type": "number", "description": "Creation timestamp in ms" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp in ms" }
+      }
+    },
+    "HealthScan": {
+      "collection": "scans",
+      "fields": {
+        "id": { "type": "string", "description": "Unique scan ID" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "animalProfileId": { "type": "string", "description": "Associated animal profile ID" },
+        "timestamp": { "type": "number", "description": "Scan timestamp in ms" },
+        "selectedAnimal": { "type": "string", "description": "User selected species" },
+        "bodyArea": { "type": "string", "description": "Affected body area" },
+        "symptomsInput": { "type": "string", "description": "User described symptoms" },
+        "status": { "type": "string", "description": "Status condition" },
+        "language": { "type": "string", "description": "Language code" },
+        "languageName": { "type": "string", "description": "Language name" },
+        "result": { "type": "object", "description": "Analysis result payload" },
+        "completedActionSteps": { "type": "object", "description": "Action step checklist status" },
+        "followUps": { "type": "array", "description": "Follow-up logs and photos" },
+        "isSimulatedDemo": { "type": "boolean", "description": "Demo record flag" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" }
+      }
+    },
+    "CareReminder": {
+      "collection": "reminders",
+      "fields": {
+        "id": { "type": "string", "description": "Reminder ID" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "animalProfileId": { "type": "string", "description": "Animal profile ID" },
+        "animalName": { "type": "string", "description": "Animal name" },
+        "animalSpecies": { "type": "string", "description": "Animal species" },
+        "reminderType": { "type": "string", "description": "vaccination, deworming, follow_up, etc." },
+        "title": { "type": "string", "description": "Reminder title" },
+        "notes": { "type": "string", "description": "Optional instructions" },
+        "dueDate": { "type": "string", "description": "Target date YYYY-MM-DD" },
+        "dueTime": { "type": "string", "description": "Due time HH:mm" },
+        "timezone": { "type": "string", "description": "Timezone string" },
+        "notifyAdvance": { "type": "string", "description": "Advance notice interval" },
+        "scheduledTimestamp": { "type": "number", "description": "UTC timestamp for trigger" },
+        "status": { "type": "string", "description": "pending or completed" },
+        "completed": { "type": "boolean", "description": "Completion flag" },
+        "notificationSent": { "type": "boolean", "description": "Whether push has been dispatched" },
+        "sentAt": { "type": "number", "description": "Timestamp when push was sent" },
+        "administeredDate": { "type": "string", "description": "Date last administered" },
+        "recurrence": { "type": "string", "description": "Recurrence rule" },
+        "createdAt": { "type": "number", "description": "Created at ms" },
+        "updatedAt": { "type": "number", "description": "Updated at ms" }
+      }
+    },
+    "Prescription": {
+      "collection": "prescriptions",
+      "fields": {
+        "id": { "type": "string", "description": "Prescription ID" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "screeningId": { "type": "string", "description": "Associated screening ID if linked" },
+        "animalProfileId": { "type": "string", "description": "Animal profile ID" },
+        "animalName": { "type": "string", "description": "Animal name" },
+        "date": { "type": "string", "description": "Date prescribed YYYY-MM-DD" },
+        "doctorName": { "type": "string", "description": "Veterinarian name" },
+        "hospitalClinic": { "type": "string", "description": "Clinic or hospital name" },
+        "diagnosisCondition": { "type": "string", "description": "Diagnosis or condition" },
+        "medicines": { "type": "array", "description": "Prescribed medicine list" },
+        "specialInstructions": { "type": "string", "description": "Instructions" },
+        "followUpDate": { "type": "string", "description": "Next scheduled follow-up" },
+        "followUpReason": { "type": "string", "description": "Follow-up reason" },
+        "createdAt": { "type": "number", "description": "Created at timestamp" },
+        "updatedAt": { "type": "number", "description": "Updated at timestamp" }
+      }
+    },
+    "VetVisit": {
+      "collection": "vet_visits",
+      "fields": {
+        "id": { "type": "string", "description": "Visit ID" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "animalProfileId": { "type": "string", "description": "Animal profile ID" },
+        "animalName": { "type": "string", "description": "Animal name" },
+        "date": { "type": "string", "description": "Date YYYY-MM-DD" },
+        "veterinarian": { "type": "string", "description": "Doctor name" },
+        "hospitalClinic": { "type": "string", "description": "Hospital name" },
+        "reason": { "type": "string", "description": "Reason for clinic visit" },
+        "notes": { "type": "string", "description": "Clinical findings and advice" },
+        "createdAt": { "type": "number", "description": "Created at timestamp" }
+      }
+    },
+    "PushSubscription": {
+      "collection": "push_subscriptions",
+      "fields": {
+        "id": { "type": "string", "description": "Subscription ID" },
+        "userId": { "type": "string", "description": "Anonymous user/device ID" },
+        "deviceId": { "type": "string", "description": "Device hardware ID" },
+        "endpoint": { "type": "string", "description": "Web Push subscription endpoint" },
+        "keys": { "type": "object", "description": "p256dh and auth keys" },
+        "timezone": { "type": "string", "description": "Device timezone" },
+        "language": { "type": "string", "description": "Device language" },
+        "categories": { "type": "object", "description": "Active reminder categories" },
+        "createdAt": { "type": "number", "description": "Created timestamp" },
+        "lastActive": { "type": "number", "description": "Last active timestamp" },
+        "updatedAt": { "type": "number", "description": "Updated timestamp" }
+      }
+    }
+  }
+}

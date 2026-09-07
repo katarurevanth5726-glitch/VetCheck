@@ -1,0 +1,6 @@
+{
+  "name": "VetCheck",
+  "description": "A multilingual, image-based animal health screening and early-guidance platform for pet owners, farmers and animal caregivers.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
