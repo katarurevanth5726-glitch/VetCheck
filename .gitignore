@@ -37,3 +37,7 @@ Thumbs.db
 # Uploaded test artifacts & local cache
 *.tmp
 /tmp
+
+.firebase/
+.server-reminders.json
+.vapid-keys.json
