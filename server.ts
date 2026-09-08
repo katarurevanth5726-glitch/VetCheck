@@ -38,6 +38,9 @@ app.use(
   })
 );
 
+// Explicit preflight handling
+app.options("*", cors());
+
 // Body parser with safe limit (50mb to handle up to 3 high-res photos)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -51,17 +54,49 @@ app.use(apiRoutesRouter);
 // Notification & Reminder Scheduler endpoints
 app.use(notificationRouter);
 
+// Verified Gemini Multimodal Candidate Models (Primary -> Fallbacks)
+const DEFAULT_CANDIDATE_MODELS: string[] = [
+  process.env.GEMINI_MODEL,
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+].filter(Boolean) as string[];
+
 // Safe helper to obtain active Gemini API Key
 function getApiKey(): string {
   const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  if (envKey && envKey !== "your_gemini_api_key_here" && envKey.trim() !== "") {
-    return envKey.trim();
+  if (envKey && typeof envKey === "string") {
+    const cleaned = envKey.replace(/^["']|["']$/g, "").trim();
+    if (cleaned && cleaned !== "your_gemini_api_key_here" && !cleaned.includes("placeholder")) {
+      return cleaned;
+    }
   }
   return "";
 }
 
+// Robust MIME detection and base64 extraction helper
+function parseBase64Image(raw: string, defaultMime = "image/jpeg"): { mimeType: string; data: string } {
+  if (!raw || typeof raw !== "string") {
+    return { mimeType: defaultMime, data: "" };
+  }
+  const match = raw.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.*)$/s);
+  if (match) {
+    return { mimeType: match[1], data: match[2].trim() };
+  }
+  const clean = raw.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
+  let mime = defaultMime;
+  if (clean.startsWith("/9j/")) mime = "image/jpeg";
+  else if (clean.startsWith("iVBORw0KGgo")) mime = "image/png";
+  else if (clean.startsWith("UklGR")) mime = "image/webp";
+  else if (clean.startsWith("R0lGOD")) mime = "image/gif";
+  return { mimeType: mime, data: clean };
+}
+
 // Lazy initialize GenAI client
 let genAIClient: GoogleGenAI | null = null;
+let lastApiKeyUsed = "";
 function getGenAI(): GoogleGenAI {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -70,7 +105,8 @@ function getGenAI(): GoogleGenAI {
     keyError.code = 401;
     throw keyError;
   }
-  if (!genAIClient) {
+  if (!genAIClient || lastApiKeyUsed !== apiKey) {
+    lastApiKeyUsed = apiKey;
     genAIClient = new GoogleGenAI({
       apiKey,
       httpOptions: {
@@ -88,7 +124,7 @@ async function generateWithModelFallback({
   parts,
   systemInstruction,
   jsonSchema,
-  candidateModels = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+  candidateModels = DEFAULT_CANDIDATE_MODELS,
 }: {
   parts: any[];
   systemInstruction: string;
@@ -104,7 +140,7 @@ async function generateWithModelFallback({
     const modelStart = Date.now();
 
     try {
-      console.log(`[VetCheck] Gemini model: ${model}`);
+      console.log(`[VetCheck] Gemini model: ${model} | Attempt ${i + 1} of ${candidateModels.length}${isFallback ? " (Fallback)" : " (Primary)"}`);
       console.log(`[VetCheck] Gemini request started`);
       
       const response = await ai.models.generateContent({
@@ -121,18 +157,19 @@ async function generateWithModelFallback({
       const text = response.text || "";
 
       if (text) {
-        console.log(`[VetCheck] Gemini response received`);
+        console.log(`[VetCheck] Gemini response received successfully from ${model} in ${duration}ms`);
         return { text, modelUsed: model, durationMs: duration };
       } else {
-        throw new Error("Empty response received from Gemini model.");
+        throw new Error(`Empty response received from Gemini model ${model}.`);
       }
     } catch (err: any) {
       const duration = Date.now() - modelStart;
       lastError = err;
       const msg = err?.message || String(err);
       const statusCode = typeof err?.status === "number" ? err.status : typeof err?.code === "number" ? err.code : 500;
+      const errorCode = err?.code || (statusCode === 404 ? "MODEL_NOT_FOUND" : "GEMINI_ERROR");
 
-      console.error(`[VetCheck] Gemini error status: ${statusCode}`);
+      console.error(`[VetCheck] Gemini error on model ${model} after ${duration}ms | Status: ${statusCode} | Code: ${errorCode} | Message: ${msg}`);
 
       // Immediate stop for non-retryable errors
       if (/safety|blocked|harm/i.test(msg)) {
@@ -170,12 +207,16 @@ async function generateWithModelFallback({
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
+  const apiKeyConfigured = Boolean(getApiKey());
   res.json({
     success: true,
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "VetCheck API",
-    models: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+    models: DEFAULT_CANDIDATE_MODELS,
+    primaryModel: DEFAULT_CANDIDATE_MODELS[0] || "gemini-3.6-flash",
+    fallbackModels: DEFAULT_CANDIDATE_MODELS.slice(1),
+    geminiConfigured: apiKeyConfigured,
   });
 });
 
@@ -193,25 +234,27 @@ app.post("/api/validate-image", async (req, res) => {
   }
 
   // Parse slot images
-  const inputSlots: { slotId: string; base64: string; slotIndex: number }[] = [];
+  const inputSlots: { slotId: string; mimeType: string; data: string; slotIndex: number }[] = [];
 
   if (Array.isArray(images) && images.length > 0) {
     images.forEach((img: any, idx: number) => {
-      const clean = (img.base64 || "").replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "").trim();
-      if (clean) {
+      const parsed = parseBase64Image(img.base64 || img.url || "", "image/jpeg");
+      if (parsed.data) {
         inputSlots.push({
           slotId: img.type || img.slotId || (idx === 0 ? "close_up" : idx === 1 ? "full_body" : "angle"),
-          base64: clean,
+          mimeType: parsed.mimeType,
+          data: parsed.data,
           slotIndex: idx + 1,
         });
       }
     });
   } else if (imageBase64) {
-    const clean = imageBase64.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "").trim();
-    if (clean) {
+    const parsed = parseBase64Image(imageBase64, "image/jpeg");
+    if (parsed.data) {
       inputSlots.push({
         slotId: "close_up",
-        base64: clean,
+        mimeType: parsed.mimeType,
+        data: parsed.data,
         slotIndex: 1,
       });
     }
@@ -225,7 +268,7 @@ app.post("/api/validate-image", async (req, res) => {
     });
   }
 
-  const totalBytes = inputSlots.reduce((acc, s) => acc + Math.round((s.base64.length * 3) / 4), 0);
+  const totalBytes = inputSlots.reduce((acc, s) => acc + Math.round((s.data.length * 3) / 4), 0);
   console.log(
     `[VetCheck Server] Validation started | Photos: ${inputSlots.length} | Total Payload: ${Math.round(
       totalBytes / 1024
@@ -329,8 +372,8 @@ If multiple photos are provided, evaluate each photo slot individually in order.
   inputSlots.forEach((slot) => {
     parts.push({
       inlineData: {
-        mimeType: "image/jpeg",
-        data: slot.base64,
+        mimeType: slot.mimeType,
+        data: slot.data,
       },
     });
   });
@@ -346,7 +389,7 @@ Respond strictly in structured JSON.`;
       parts,
       systemInstruction,
       jsonSchema: validationSchema,
-      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+      candidateModels: DEFAULT_CANDIDATE_MODELS,
     });
 
     const sanitizedRaw = result.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
@@ -487,7 +530,6 @@ Respond strictly in structured JSON.`;
 // Veterinary Image Screening Analysis Endpoint (Streamlined Single Multimodal Request)
 app.post("/api/analyze", async (req, res) => {
   const requestStartTime = Date.now();
-  console.log(`[VetCheck] ANALYZE request received`);
   const {
     imageBase64,
     images,
@@ -500,8 +542,8 @@ app.post("/api/analyze", async (req, res) => {
   } = req.body;
 
   if (!getApiKey()) {
-    console.error("[VetCheck] Gemini error status: 401");
-    console.log(`[VetCheck] Total analysis time: ${Date.now() - requestStartTime} ms`);
+    console.error("[VetCheck] Gemini error status: 401 | Reason: GEMINI_API_KEY is missing or unconfigured");
+    console.log(`[VetCheck] Total analysis time: ${Date.now() - requestStartTime} ms | Status: 401`);
     return res.status(401).json({
       success: false,
       code: "API_KEY_MISSING",
@@ -510,38 +552,41 @@ app.post("/api/analyze", async (req, res) => {
     });
   }
 
-  // Collect all provided unique images (up to 3) for the multimodal request
+  // Collect all provided unique images (up to 3) for the multimodal request with exact MIME detection
   const imageParts: any[] = [];
+  const mimeTypes: string[] = [];
+
   if (Array.isArray(images) && images.length > 0) {
     for (const img of images.slice(0, 3)) {
-      const clean = (img.base64 || "").replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "").trim();
-      if (clean) {
+      const parsed = parseBase64Image(img.base64 || img.url || "", mimeType || "image/jpeg");
+      if (parsed.data) {
         imageParts.push({
           inlineData: {
-            mimeType: "image/jpeg",
-            data: clean,
+            mimeType: parsed.mimeType,
+            data: parsed.data,
           },
         });
+        mimeTypes.push(parsed.mimeType);
       }
     }
   }
 
   // Fallback to imageBase64 if images array was empty
   if (imageParts.length === 0 && imageBase64) {
-    const clean = imageBase64.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "").trim();
-    if (clean) {
+    const parsed = parseBase64Image(imageBase64, mimeType || "image/jpeg");
+    if (parsed.data) {
       imageParts.push({
         inlineData: {
-          mimeType: mimeType || "image/jpeg",
-          data: clean,
+          mimeType: parsed.mimeType,
+          data: parsed.data,
         },
       });
+      mimeTypes.push(parsed.mimeType);
     }
   }
 
   if (imageParts.length === 0) {
-    console.log(`[VetCheck] Images received: 0`);
-    console.log(`[VetCheck] Total analysis time: ${Date.now() - requestStartTime} ms`);
+    console.warn(`[VetCheck] ANALYZE request received with 0 valid images | Duration: ${Date.now() - requestStartTime} ms | Status: 400`);
     return res.status(400).json({
       success: false,
       code: "INVALID_PAYLOAD",
@@ -553,8 +598,11 @@ app.post("/api/analyze", async (req, res) => {
 
   const totalImageBytes = imageParts.reduce((acc, part) => acc + Math.round((part.inlineData.data.length * 3) / 4), 0);
 
-  console.log(`[VetCheck] Images received: ${imageParts.length}`);
-  console.log(`[VetCheck] Payload size: ${Math.round(totalImageBytes / 1024)} KB`);
+  console.log(
+    `[VetCheck] ANALYZE request received | Images: ${imageParts.length} | MIMEs: [${mimeTypes.join(", ")}] | Size: ~${Math.round(
+      totalImageBytes / 1024
+    )} KB | Animal: ${selectedAnimal || "not specified"} | Lang: ${language} (${languageName})`
+  );
 
   // 1. Precise Analysis Instruction with Animal & Clinical Injury Screening
   let systemInstruction = `Perform preliminary visual screening of the animal in the provided photos. 
@@ -669,7 +717,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
   ];
 
   let rawResponseText = "";
-  let modelUsed = "gemini-3.5-flash";
+  let modelUsed = DEFAULT_CANDIDATE_MODELS[0] || "gemini-3.6-flash";
   let geminiDuration = 0;
 
   try {
@@ -677,7 +725,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
       parts,
       systemInstruction,
       jsonSchema,
-      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+      candidateModels: DEFAULT_CANDIDATE_MODELS,
     });
     rawResponseText = result.text;
     modelUsed = result.modelUsed;
@@ -687,7 +735,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
     const msg = err?.message || "Analysis could not be completed.";
     const duration = Date.now() - requestStartTime;
 
-    console.error(`[VetCheck] Gemini error status: ${statusCode}`);
+    console.error(`[VetCheck] Gemini analysis failed after ${duration}ms | Status: ${statusCode} | Error: ${msg}`);
     console.log(`[VetCheck] Total analysis time: ${duration} ms`);
 
     if (err?.code === "SAFETY_BLOCK" || /safety|blocked|harm/i.test(msg)) {
@@ -943,9 +991,6 @@ app.post("/api/compare", async (req, res) => {
     });
   }
 
-  const cleanOriginal = originalImageBase64.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "");
-  const cleanNew = newImageBase64.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "");
-
   const systemInstruction = `You are "VetCheck", evaluating a follow-up image comparison for an animal under preliminary visual monitoring.
 CRITICAL COMPARISON GUIDELINES:
 1. Compare only visible visual changes (swelling size, crusting/scabbing, discharge clarity, redness, hair regrowth).
@@ -995,9 +1040,12 @@ Evaluate visible changes and return strictly JSON.`;
     required: ["status", "summary", "visibleChanges", "limitations", "recommendedNextStep"],
   };
 
+  const parsedOriginal = parseBase64Image(originalImageBase64, "image/jpeg");
+  const parsedNew = parseBase64Image(newImageBase64, "image/jpeg");
+
   const parts = [
-    { inlineData: { mimeType: "image/jpeg", data: cleanOriginal } },
-    { inlineData: { mimeType: "image/jpeg", data: cleanNew } },
+    { inlineData: { mimeType: parsedOriginal.mimeType, data: parsedOriginal.data } },
+    { inlineData: { mimeType: parsedNew.mimeType, data: parsedNew.data } },
     { text: userPrompt },
   ];
 
@@ -1006,7 +1054,7 @@ Evaluate visible changes and return strictly JSON.`;
       parts,
       systemInstruction,
       jsonSchema,
-      candidateModels: ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+      candidateModels: DEFAULT_CANDIDATE_MODELS,
     });
 
     let parsed: any;
