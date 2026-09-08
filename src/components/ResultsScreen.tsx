@@ -46,10 +46,9 @@ import {
   UserFeedback,
   VeterinaryPrescription,
 } from "../types";
-import { getTranslation } from "../data/translations";
+import { getTranslation, SUPPORTED_LANGUAGES } from "../data/translations";
 import { ttsManager } from "../utils/speechHelper";
 import { shareScreeningSummary, downloadScreeningSummaryAsTxt } from "../utils/shareHelper";
-import { AudioPlayerButton } from "./AudioPlayerButton";
 import { NearbyVetModal } from "./NearbyVetModal";
 import { VeterinaryReportModal } from "./VeterinaryReportModal";
 import { FollowUpModal } from "./FollowUpModal";
@@ -437,12 +436,78 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     emergencyVoiceWarning,
   ].filter(Boolean).join(" ");
 
-  // Auto-speak if enabled in user settings
+  // Read Aloud / Speech Synthesis State
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const isSpeechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  const handleStopSpeech = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    ttsManager.stop();
+    setIsSpeaking(false);
+  };
+
+  const handleToggleReadAloud = () => {
+    if (!isSpeechSupported) return;
+
+    if (isSpeaking) {
+      handleStopSpeech();
+      return;
+    }
+
+    // Cancel any ongoing speech before starting a new one to prevent overlaps
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    ttsManager.stop();
+
+    if (!shortSpeechSummary || shortSpeechSummary.trim() === "") return;
+
+    try {
+      const utterance = new SpeechSynthesisUtterance(shortSpeechSummary);
+      const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
+      const targetLocale = langConfig?.speechLocale || "en-IN";
+      utterance.lang = targetLocale;
+      utterance.rate = Math.max(0.7, Math.min(1.5, settings.ttsVoiceSpeed || 1.0));
+      utterance.pitch = Math.max(0.8, Math.min(1.3, settings.ttsPitch || 1.0));
+
+      const voices = window.speechSynthesis.getVoices();
+      const matchedVoice = voices.find((v) => v.lang.startsWith(targetLocale.split("-")[0]));
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("[VetCheck TTS] Speech synthesis error/canceled:", e);
+        setIsSpeaking(false);
+      };
+
+      setIsSpeaking(true);
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("[VetCheck TTS] Failed to start speech:", err);
+      setIsSpeaking(false);
+    }
+  };
+
+  // Auto-speak if enabled in user settings & cleanup when navigating away
   useEffect(() => {
-    if (settings.autoSpeakResults && result.validAnimalImage) {
-      ttsManager.speak(shortSpeechSummary, lang, settings.ttsVoiceSpeed, settings.ttsPitch);
+    if (settings.autoSpeakResults && result.validAnimalImage && isSpeechSupported) {
+      handleToggleReadAloud();
     }
     return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
       ttsManager.stop();
     };
   }, []);
@@ -568,13 +633,23 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Read Aloud Button */}
-          <AudioPlayerButton
-            textToRead={shortSpeechSummary}
-            langCode={lang}
-            size="sm"
-            label="Read Aloud"
-          />
+          {/* Read Aloud / Stop Reading Button */}
+          {isSpeechSupported && (
+            <button
+              type="button"
+              id="read-aloud-btn"
+              onClick={handleToggleReadAloud}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                isSpeaking
+                  ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
+                  : "bg-white text-[#315C4C] hover:bg-[#FAF9F5] border-[#E5E3DC]"
+              }`}
+              title={isSpeaking ? "Stop Reading" : "Read Aloud"}
+              aria-label={isSpeaking ? "Stop Reading" : "Read Aloud"}
+            >
+              <span>{isSpeaking ? "⏹ Stop Reading" : "🔊 Read Aloud"}</span>
+            </button>
+          )}
 
           {/* Full Vet Summary Modal Trigger */}
           <button

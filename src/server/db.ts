@@ -82,6 +82,10 @@ export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record
     if (value === undefined) continue;
     if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
       clean[key] = cleanForFirestore(value);
+    } else if (Array.isArray(value)) {
+      clean[key] = value
+        .filter((item) => item !== undefined)
+        .map((item) => (item !== null && typeof item === "object" && !(item instanceof Date) ? cleanForFirestore(item) : item));
     } else {
       clean[key] = value;
     }
@@ -276,6 +280,11 @@ export async function dbSaveScan(userId: string, scan: any): Promise<any> {
     ...sanitizedScan,
     id: scanId,
     userId,
+    selectedAnimal: sanitizedScan.selectedAnimal ?? null,
+    animalProfileId: sanitizedScan.animalProfileId ?? null,
+    bodyArea: sanitizedScan.bodyArea ?? null,
+    symptomsInput: sanitizedScan.symptomsInput ?? null,
+    riskFactorsSelected: sanitizedScan.riskFactorsSelected ?? [],
     updatedAt: Date.now(),
     timestamp: scan.timestamp || Date.now(),
   });

@@ -37,12 +37,37 @@ export function getClientFirestore(): Firestore | null {
   }
 }
 
+/**
+ * Recursively removes any `undefined` values from an object/array so Firestore setDoc never fails.
+ */
+export function cleanForFirestoreClient<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+      clean[key] = cleanForFirestoreClient(value);
+    } else if (Array.isArray(value)) {
+      clean[key] = value
+        .filter((item) => item !== undefined)
+        .map((item) => (item !== null && typeof item === "object" && !(item instanceof Date) ? cleanForFirestoreClient(item) : item));
+    } else {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
 export async function directSaveAnimalToFirestore(animal: AnimalProfile, userId: string): Promise<boolean> {
   try {
     const db = getClientFirestore();
     if (!db) return false;
     const docRef = doc(db, "animals", animal.id);
-    await setDoc(docRef, { ...animal, userId, updatedAt: Date.now() }, { merge: true });
+    const safeData = cleanForFirestoreClient({
+      ...animal,
+      userId,
+      updatedAt: Date.now(),
+    });
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Save animal error:", err);
@@ -68,18 +93,13 @@ export async function directSaveScanToFirestore(scan: ScreeningRecord, userId: s
     const db = getClientFirestore();
     if (!db) return false;
     const docRef = doc(db, "scans", scan.id);
-    const safeScan = {
+    const safeData = cleanForFirestoreClient({
       ...scan,
       userId,
-      // Omit oversized dataUrls from Firestore document to stay within 1MB limit
-      imageThumbnail: scan.imageThumbnail?.startsWith("data:") ? scan.imageThumbnail.substring(0, 1000) : scan.imageThumbnail,
-      allImages: scan.allImages?.map((img) => ({
-        type: img.type,
-        url: img.url,
-      })),
+      selectedAnimal: scan.selectedAnimal ?? null,
       updatedAt: Date.now(),
-    };
-    await setDoc(docRef, safeScan, { merge: true });
+    });
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Save scan error:", err);
@@ -92,7 +112,12 @@ export async function directSaveReminderToFirestore(reminder: CareReminder, user
     const db = getClientFirestore();
     if (!db) return false;
     const docRef = doc(db, "reminders", reminder.id);
-    await setDoc(docRef, { ...reminder, userId, updatedAt: Date.now() }, { merge: true });
+    const safeData = cleanForFirestoreClient({
+      ...reminder,
+      userId,
+      updatedAt: Date.now(),
+    });
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Save reminder error:", err);
@@ -118,7 +143,12 @@ export async function directSavePrescriptionToFirestore(p: VeterinaryPrescriptio
     const db = getClientFirestore();
     if (!db) return false;
     const docRef = doc(db, "prescriptions", p.id);
-    await setDoc(docRef, { ...p, userId, updatedAt: Date.now() }, { merge: true });
+    const safeData = cleanForFirestoreClient({
+      ...p,
+      userId,
+      updatedAt: Date.now(),
+    });
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Save prescription error:", err);
@@ -131,7 +161,12 @@ export async function directSaveVetVisitToFirestore(v: VetVisit, userId: string)
     const db = getClientFirestore();
     if (!db) return false;
     const docRef = doc(db, "vet_visits", v.id);
-    await setDoc(docRef, { ...v, userId, updatedAt: Date.now() }, { merge: true });
+    const safeData = cleanForFirestoreClient({
+      ...v,
+      userId,
+      updatedAt: Date.now(),
+    });
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Save vet visit error:", err);

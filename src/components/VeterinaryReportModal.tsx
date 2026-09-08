@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   FileText,
@@ -58,6 +58,16 @@ export const VeterinaryReportModal: React.FC<VeterinaryReportModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Cancel any speech synthesis if modal is closed / unmounted
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      ttsManager.stop();
+    };
+  }, []);
 
   if (!result) {
     return null;
