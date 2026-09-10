@@ -28,6 +28,9 @@ import {
   CalendarCheck,
   CalendarPlus,
   Edit2,
+  Play,
+  Pause,
+  Trash2,
 } from "lucide-react";
 import { SUPPORTED_LANGUAGES, getTranslation } from "../data/translations";
 import { NavTab, ScreeningRecord, UserSettings, CareReminder, AnimalProfile } from "../types";
@@ -35,6 +38,10 @@ import {
   getUpcomingAndOverdueReminders,
   getStoredAnimalProfiles,
   toggleReminderCompleted,
+  pauseMedicineReminder,
+  resumeMedicineReminder,
+  deleteReminder,
+  formatIntervalDisplay,
 } from "../utils/storage";
 import { SetFollowUpModal } from "./SetFollowUpModal";
 
@@ -79,7 +86,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const refreshReminders = () => {
     try {
       const activeReminders = getUpcomingAndOverdueReminders();
-      setReminders(activeReminders);
+      setReminders(activeReminders.allActive || (Array.isArray(activeReminders) ? (activeReminders as any) : []));
       setProfiles(getStoredAnimalProfiles());
     } catch (e) {
       console.warn("Could not load care reminders for home:", e);
@@ -93,6 +100,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const handleCompleteReminder = (reminder: CareReminder) => {
     toggleReminderCompleted(reminder.id, reminder.recurrence && reminder.recurrence !== "none");
     refreshReminders();
+  };
+
+  const handlePauseReminder = (reminder: CareReminder) => {
+    pauseMedicineReminder(reminder.id);
+    refreshReminders();
+  };
+
+  const handleResumeReminder = (reminder: CareReminder) => {
+    resumeMedicineReminder(reminder.id);
+    refreshReminders();
+  };
+
+  const handleDeleteReminder = (reminder: CareReminder) => {
+    if (confirm(`Remove reminder for "${reminder.medicineName || reminder.title}"?`)) {
+      deleteReminder(reminder.id);
+      refreshReminders();
+    }
   };
 
   return (
@@ -386,6 +410,119 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               const isTomorrow = diffDays === 1;
 
               const isFollowUp = rem.reminderType === "follow_up" || rem.type === "follow_up";
+              const isMedicine = rem.reminderType === "medicine" || rem.type === "medicine";
+
+              if (isMedicine) {
+                const isPaused = rem.status === "paused" || rem.active === false;
+                const medName = rem.medicineName || rem.title.replace(/^Medicine:\s*/i, "");
+                const intervalStr = formatIntervalDisplay(rem.intervalValue, rem.intervalUnit);
+                const nextTimeStr = rem.dueTime ? `${rem.dueDate || "Today"} at ${rem.dueTime}` : (rem.dueDate || "Today");
+
+                return (
+                  <div
+                    key={rem.id}
+                    className={`p-3.5 rounded-xl border space-y-2.5 transition-colors ${
+                      isPaused
+                        ? "bg-[#FAF9F5] border-[#E5E3DC] opacity-80"
+                        : "bg-emerald-50/40 border-emerald-200/80"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                            isPaused
+                              ? "bg-stone-200 text-stone-600"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          <Pill className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-[#252A27]">
+                              💊 {medName}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                isPaused
+                                  ? "bg-amber-100 text-amber-900 border border-amber-200"
+                                  : "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                              }`}
+                            >
+                              {isPaused ? "⏸️ Paused" : "🟢 Active"}
+                            </span>
+                            <span className="text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                              {intervalStr}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#626963] font-normal mt-0.5">
+                            Animal: <strong className="text-[#252A27]">{rem.animalName}</strong> ({rem.species || "Animal"})
+                            <span className="block sm:inline sm:ml-2 text-stone-500 font-medium">
+                              • Next alert: {nextTimeStr}
+                            </span>
+                          </p>
+                          {rem.notes && (
+                            <p className="text-[11px] text-stone-600 italic mt-1 bg-white/70 p-1.5 rounded-lg border border-stone-200/70">
+                              "{rem.notes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons for Medicine Reminder */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 pl-10">
+                      {isPaused ? (
+                        <button
+                          type="button"
+                          onClick={() => handleResumeReminder(rem)}
+                          className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Play className="w-3 h-3 text-emerald-700" />
+                          <span>Resume</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handlePauseReminder(rem)}
+                          className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Pause className="w-3 h-3 text-amber-700" />
+                          <span>Pause</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setEditingReminder(rem)}
+                        className="px-2.5 py-1 bg-white hover:bg-[#FAF9F5] text-[#626963] border border-[#E5E3DC] rounded-lg text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Edit2 className="w-3 h-3 text-[#858B86]" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReminder(rem)}
+                        className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-600" />
+                        <span>Delete</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteReminder(rem)}
+                        className="px-2.5 py-1 bg-[#315C4C] hover:bg-[#25473B] text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ml-auto"
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-white" />
+                        <span>Mark Completed</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
 
               if (isFollowUp) {
                 return (

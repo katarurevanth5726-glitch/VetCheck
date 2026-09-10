@@ -21,6 +21,8 @@ import {
   FileText,
   AlertTriangle,
   Bell,
+  Play,
+  Pause,
 } from "lucide-react";
 import { AnimalProfile, CareReminder, UserSettings } from "../types";
 import {
@@ -29,6 +31,9 @@ import {
   saveReminder,
   deleteReminder,
   toggleReminderCompleted,
+  pauseMedicineReminder,
+  resumeMedicineReminder,
+  formatIntervalDisplay,
   getSpeciesCareTemplates,
   CareTemplateItem,
 } from "../utils/storage";
@@ -47,7 +52,7 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
   onRemindersChanged,
 }) => {
   const [reminders, setReminders] = useState<CareReminder[]>([]);
-  const [filterType, setFilterType] = useState<"all" | "active" | "completed" | "vaccination" | "deworming">("active");
+  const [filterType, setFilterType] = useState<"all" | "active" | "medicine" | "vaccination" | "deworming" | "completed">("active");
   const [isAdding, setIsAdding] = useState(false);
   const [editingReminder, setEditingReminder] = useState<CareReminder | null>(null);
 
@@ -192,14 +197,56 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
     }
   };
 
+  const handlePauseMedicine = (id: string) => {
+    pauseMedicineReminder(id);
+    const allReminders = getStoredReminders();
+    syncRemindersToServer(allReminders, settings?.userProfile?.name, settings?.userTimezone, settings?.language);
+    loadData();
+    if (onRemindersChanged) onRemindersChanged();
+    showToast("Medicine reminder paused");
+  };
+
+  const handleResumeMedicine = (id: string) => {
+    resumeMedicineReminder(id);
+    const allReminders = getStoredReminders();
+    syncRemindersToServer(allReminders, settings?.userProfile?.name, settings?.userTimezone, settings?.language);
+    loadData();
+    if (onRemindersChanged) onRemindersChanged();
+    showToast("Medicine reminder resumed");
+  };
+
   const todayStr = new Date().toISOString().split("T")[0];
 
   const getStatusBadge = (rem: CareReminder) => {
-    if (rem.completed) {
+    if (rem.completed || rem.status === "completed") {
       return (
         <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
           <span>Completed</span>
+        </span>
+      );
+    }
+    if (rem.status === "paused" || rem.active === false) {
+      return (
+        <span className="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+          <Pause className="w-3 h-3 text-amber-600" />
+          <span>Paused</span>
+        </span>
+      );
+    }
+    if (rem.reminderType === "medicine") {
+      const triggerTs = rem.nextTriggerTimestamp || (rem.dueDate ? new Date(`${rem.dueDate}T${rem.dueTime || "09:00"}:00`).getTime() : 0);
+      const now = Date.now();
+      const diffMin = Math.round((triggerTs - now) / 60000);
+      const label = diffMin <= 0
+        ? "Due now"
+        : diffMin < 60
+        ? `In ${diffMin}m`
+        : `Next: ${new Date(triggerTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      return (
+        <span className="text-[10px] font-black text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+          <Clock className="w-3 h-3 text-teal-600" />
+          <span>{label}</span>
         </span>
       );
     }
@@ -234,8 +281,9 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
   };
 
   const filteredList = reminders.filter((rem) => {
-    if (filterType === "active") return !rem.completed;
-    if (filterType === "completed") return rem.completed;
+    if (filterType === "active") return !rem.completed && rem.status !== "completed";
+    if (filterType === "completed") return rem.completed || rem.status === "completed";
+    if (filterType === "medicine") return rem.reminderType === "medicine";
     if (filterType === "vaccination") return rem.reminderType === "vaccination";
     if (filterType === "deworming") return rem.reminderType === "deworming";
     return true;
@@ -549,7 +597,8 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         {[
           { id: "active", label: `Upcoming / Due (${activeReminders.length})` },
-          { id: "completed", label: `Completed (${reminders.filter((r) => r.completed).length})` },
+          { id: "medicine", label: `Medicine (${reminders.filter((r) => r.reminderType === "medicine" && !r.completed && r.status !== "completed").length})` },
+          { id: "completed", label: `Completed (${reminders.filter((r) => r.completed || r.status === "completed").length})` },
           { id: "vaccination", label: "Vaccines" },
           { id: "deworming", label: "Deworming" },
           { id: "all", label: `All (${reminders.length})` },
@@ -579,20 +628,26 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
             {filterType === "completed" ? "No Completed Records Yet" : "No Care Schedules in this Category"}
           </h4>
           <p className="text-[11px] text-stone-500 max-w-xs mx-auto">
-            Add vaccine doses or deworming cycles to get automated date tracking.
+            Add vaccine doses, deworming cycles, or medicine reminders to get automated tracking.
           </p>
         </div>
       ) : (
         <div className="space-y-2.5">
           {filteredList.map((rem) => {
-            const isVaccine = rem.reminderType !== "deworming";
+            const isMedicine = rem.reminderType === "medicine";
+            const isDeworming = rem.reminderType === "deworming";
+            const isPaused = rem.status === "paused" || rem.active === false;
+            const isCompleted = rem.completed || rem.status === "completed";
+
             return (
               <div
                 key={rem.id}
                 className={`p-4 rounded-2xl border transition-all ${
-                  rem.completed
+                  isCompleted
                     ? "bg-[#FAF8F5] border-stone-200 opacity-80"
-                    : rem.dueDate < todayStr
+                    : isPaused
+                    ? "bg-amber-50/40 border-amber-200"
+                    : !isMedicine && rem.dueDate < todayStr
                     ? "bg-rose-50/70 border-rose-300"
                     : "bg-white border-[#E8E2D5] hover:border-teal-300"
                 }`}
@@ -603,39 +658,71 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
                       type="button"
                       onClick={() => handleToggleComplete(rem)}
                       className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-colors cursor-pointer ${
-                        rem.completed
+                        isCompleted
                           ? "bg-emerald-600 border-emerald-600 text-white"
                           : "border-stone-300 bg-white hover:border-teal-500"
                       }`}
-                      title={rem.completed ? "Mark incomplete" : "Mark as completed (auto-schedules next cycle)"}
+                      title={isCompleted ? "Mark incomplete" : "Mark as completed"}
                     >
-                      {rem.completed && <Check className="w-4 h-4 stroke-[3]" />}
+                      {isCompleted && <Check className="w-4 h-4 stroke-[3]" />}
                     </button>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-black text-slate-900">
-                          {isVaccine ? "💉" : "💊"} {rem.title}
+                          {isMedicine ? "💊" : isDeworming ? "💊" : "💉"} {rem.title}
                         </span>
+                        {isMedicine && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                            Repeat: {formatIntervalDisplay(rem.intervalValue, rem.intervalUnit)}
+                          </span>
+                        )}
                         {getStatusBadge(rem)}
                       </div>
 
                       <div className="text-[11px] text-stone-500 font-medium flex items-center gap-3 mt-1 flex-wrap">
-                        <span>
-                          <strong>Next Due:</strong> {new Date(rem.dueDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
-                        </span>
-                        {rem.administeredDate && (
-                          <span>
-                            <strong>Given:</strong> {new Date(rem.administeredDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
-                          </span>
+                        {isMedicine ? (
+                          <>
+                            {rem.nextTriggerTimestamp && (
+                              <span>
+                                <strong>Next Dose:</strong>{" "}
+                                {new Date(rem.nextTriggerTimestamp).toLocaleString("en-IN", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                            )}
+                            {rem.durationType === "doses" && rem.durationValue && (
+                              <span className="text-teal-800 font-bold bg-teal-50 px-1.5 py-0.5 rounded">
+                                Doses: {rem.dosesGiven || 0} / {rem.durationValue}
+                              </span>
+                            )}
+                            {rem.durationType === "days" && rem.durationValue && (
+                              <span>Duration: {rem.durationValue} days</span>
+                            )}
+                            {rem.durationType === "until_date" && rem.endDate && (
+                              <span>Until: {new Date(rem.endDate).toLocaleDateString("en-IN")}</span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span>
+                              <strong>Next Due:</strong> {new Date(rem.dueDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                            </span>
+                            {rem.administeredDate && (
+                              <span>
+                                <strong>Given:</strong> {new Date(rem.administeredDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                              </span>
+                            )}
+                            {rem.recurrence && rem.recurrence !== "none" && (
+                              <span className="text-teal-800 font-bold bg-teal-50 px-1.5 py-0.5 rounded">
+                                Cycle: {rem.recurrence.replace("_", " ")}
+                              </span>
+                            )}
+                            {rem.veterinarian && <span>Vet: {rem.veterinarian}</span>}
+                            {rem.batchNumber && <span>Batch: {rem.batchNumber}</span>}
+                          </>
                         )}
-                        {rem.recurrence && rem.recurrence !== "none" && (
-                          <span className="text-teal-800 font-bold bg-teal-50 px-1.5 py-0.5 rounded">
-                            Cycle: {rem.recurrence.replace("_", " ")}
-                          </span>
-                        )}
-                        {rem.veterinarian && <span>Vet: {rem.veterinarian}</span>}
-                        {rem.batchNumber && <span>Batch: {rem.batchNumber}</span>}
                       </div>
 
                       {rem.notes && (
@@ -647,14 +734,30 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(rem)}
-                      className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg cursor-pointer"
-                      title="Edit Record"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
+                    {isMedicine && !isCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => (isPaused ? handleResumeMedicine(rem.id) : handlePauseMedicine(rem.id))}
+                        className={`p-1.5 rounded-lg cursor-pointer ${
+                          isPaused
+                            ? "text-teal-700 hover:bg-teal-50"
+                            : "text-amber-700 hover:bg-amber-50"
+                        }`}
+                        title={isPaused ? "Resume Reminder" : "Pause Reminder"}
+                      >
+                        {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                    {!isMedicine && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(rem)}
+                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg cursor-pointer"
+                        title="Edit Record"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDelete(rem.id, rem.title)}

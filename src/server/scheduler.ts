@@ -1,6 +1,7 @@
 import {
   getDueReminders,
   markReminderSent,
+  advanceMedicineReminder,
   StoredServerReminder,
 } from "./reminderStore";
 import {
@@ -21,6 +22,10 @@ interface NotificationCopy {
 
 const TEMPLATES_BY_LANG: Record<string, Record<string, NotificationCopy>> = {
   en: {
+    medicine: {
+      title: "💊 Medicine Reminder",
+      body: (a, item) => `Animal: ${a}\nTime for the scheduled medicine.${item ? ` (${item})` : ""}`,
+    },
     vaccination: {
       title: "💉 Vaccination Due",
       body: (a, item) => `${a}'s ${item || "vaccine"} is due today.`,
@@ -43,6 +48,10 @@ const TEMPLATES_BY_LANG: Record<string, Record<string, NotificationCopy>> = {
     },
   },
   hi: {
+    medicine: {
+      title: "💊 दवा का समय",
+      body: (a, item) => `पशु: ${a}\nदवा देने का समय हो गया है।${item ? ` (${item})` : ""}`,
+    },
     vaccination: {
       title: "💉 टीकाकरण का समय",
       body: (a, item) => `${a} का ${item || "टीका"} आज देय है।`,
@@ -65,6 +74,10 @@ const TEMPLATES_BY_LANG: Record<string, Record<string, NotificationCopy>> = {
     },
   },
   te: {
+    medicine: {
+      title: "💊 మందుల సమయం",
+      body: (a, item) => `జంతువు: ${a}\nషెడ్యూల్ చేసిన మందు వేయాల్సిన సమయం.${item ? ` (${item})` : ""}`,
+    },
     vaccination: {
       title: "💉 టీకా సమయం",
       body: (a, item) => `${a} కు ${item || "టీకా"} ఈరోజు వేయించాలి.`,
@@ -90,7 +103,11 @@ const TEMPLATES_BY_LANG: Record<string, Record<string, NotificationCopy>> = {
 
 function formatNotificationPayload(reminder: StoredServerReminder, lang: string = "en"): PushNotificationPayload {
   const animalName = reminder.animalName || "Your Animal";
-  const itemTitle = reminder.title?.replace(/^(Vaccination|Deworming|Follow-Up|Reminder):\s*/i, "").trim() || "";
+  const itemTitle = (
+    reminder.medicineName ||
+    reminder.title?.replace(/^(Vaccination|Deworming|Follow-Up|Medicine|Reminder):\s*/i, "").trim() ||
+    ""
+  );
   const langKey = TEMPLATES_BY_LANG[lang] ? lang : "en";
   const typeTemplates = TEMPLATES_BY_LANG[langKey] || TEMPLATES_BY_LANG["en"];
 
@@ -99,7 +116,11 @@ function formatNotificationPayload(reminder: StoredServerReminder, lang: string 
     template = TEMPLATES_BY_LANG["en"][reminder.reminderType] || TEMPLATES_BY_LANG["en"]["general"];
   }
 
-  const title = template.title;
+  let title = template.title;
+  if (reminder.reminderType === "medicine" && reminder.medicineName) {
+    title = `💊 Medicine: ${reminder.medicineName}`;
+  }
+
   const body = template.body(animalName, itemTitle);
 
   let targetTab = "my-animals";
@@ -107,12 +128,16 @@ function formatNotificationPayload(reminder: StoredServerReminder, lang: string 
     targetTab = "my-animals";
   }
 
+  const tag = reminder.reminderType === "medicine"
+    ? `vetcheck-med-${reminder.reminderId}-${reminder.scheduledTimestamp}`
+    : `vetcheck-${reminder.reminderId}`;
+
   return {
     title,
     body,
     icon: "/favicon.svg",
     badge: "/favicon.svg",
-    tag: `vetcheck-${reminder.reminderId}`,
+    tag,
     data: {
       url: `/?tab=${targetTab}&animalId=${encodeURIComponent(reminder.animalId)}&reminderId=${encodeURIComponent(reminder.reminderId)}&type=${encodeURIComponent(reminder.reminderType)}`,
       animalId: reminder.animalId,
@@ -147,8 +172,12 @@ export async function processDueReminders(): Promise<{ processedCount: number; n
       }
 
       if (targetSubs.length === 0) {
-        console.log(`[VetCheck Scheduler] Reminder '${reminder.title}' due, but no active push subscription registered. Marking sent.`);
-        markReminderSent(reminder.reminderId);
+        console.log(`[VetCheck Scheduler] Reminder '${reminder.title}' due, but no active push subscription registered.`);
+        if (reminder.reminderType === "medicine") {
+          advanceMedicineReminder(reminder.reminderId);
+        } else {
+          markReminderSent(reminder.reminderId);
+        }
         continue;
       }
 
@@ -173,8 +202,13 @@ export async function processDueReminders(): Promise<{ processedCount: number; n
         }
       }
 
-      // Mark sent so it doesn't repeat
-      markReminderSent(reminder.reminderId);
+      // If repeating medicine reminder, advance interval & check duration completion; otherwise mark sent
+      if (reminder.reminderType === "medicine") {
+        advanceMedicineReminder(reminder.reminderId);
+      } else {
+        markReminderSent(reminder.reminderId);
+      }
+
       console.log(`[VetCheck Scheduler] Reminder '${reminder.title}' processed for ${reminder.animalName}. Delivered: ${deliveredToAny}`);
     }
 

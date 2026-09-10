@@ -1365,9 +1365,32 @@ export function saveReminder(reminder: Omit<CareReminder, "id" | "createdAt"> & 
   if (typeof window === "undefined") return [];
   try {
     const existing = getStoredReminders();
+    const isMedicine = reminder.reminderType === "medicine" || reminder.type === "medicine";
+    
+    let nextTrigger = reminder.nextTriggerTimestamp;
+    if (isMedicine && !nextTrigger && !reminder.completed) {
+      const dates = calculateNextMedicineDates(
+        reminder.startDate || reminder.dueDate || new Date().toISOString().split("T")[0],
+        reminder.startTime || reminder.dueTime || "08:00",
+        reminder.intervalValue || 4,
+        reminder.intervalUnit || "hours",
+        1
+      );
+      nextTrigger = dates[0]?.getTime();
+    }
+
+    const payload: Partial<CareReminder> = {
+      ...reminder,
+      status: reminder.status || (reminder.completed ? "completed" : "active"),
+      active: reminder.active !== undefined ? reminder.active : !reminder.completed,
+      nextTriggerTimestamp: nextTrigger,
+      startDate: reminder.startDate || reminder.dueDate,
+      startTime: reminder.startTime || reminder.dueTime || "08:00",
+    };
+
     if (reminder.id) {
       const updated = existing.map((r) =>
-        r.id === reminder.id ? { ...r, ...reminder } : r
+        r.id === reminder.id ? { ...r, ...payload } : r
       );
       localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(updated));
       const target = updated.find((r) => r.id === reminder.id);
@@ -1375,11 +1398,11 @@ export function saveReminder(reminder: Omit<CareReminder, "id" | "createdAt"> & 
       return updated;
     } else {
       const newReminder: CareReminder = {
-        ...reminder,
+        ...payload,
         id: "rem-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
         createdAt: Date.now(),
         completed: reminder.completed || false,
-      };
+      } as CareReminder;
       const updated = [newReminder, ...existing];
       localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(updated));
       syncReminderToBackend(newReminder, "save");
@@ -1405,6 +1428,117 @@ export function deleteReminder(reminderId: string): CareReminder[] {
   }
 }
 
+export function formatIntervalDisplay(intervalValue?: number, intervalUnit?: string): string {
+  const val = intervalValue || 1;
+  const unit = (intervalUnit || "hours").toLowerCase();
+  if (unit === "minutes") {
+    return `Every ${val} ${val === 1 ? "Minute" : "Minutes"}`;
+  }
+  if (unit === "days") {
+    return `Every ${val} ${val === 1 ? "Day" : "Days"}`;
+  }
+  if (val === 24) {
+    return "Every 24 Hours (Once Daily)";
+  }
+  return `Every ${val} ${val === 1 ? "Hour" : "Hours"}`;
+}
+
+export function calculateNextMedicineDates(
+  startDateStr: string,
+  startTimeStr: string = "08:00",
+  intervalValue: number = 4,
+  intervalUnit: "minutes" | "hours" | "days" = "hours",
+  count: number = 3,
+  fromTimestamp?: number
+): Date[] {
+  try {
+    const [year, month, day] = (startDateStr || new Date().toISOString().split("T")[0]).split("-").map(Number);
+    const [hour, minute] = (startTimeStr || "08:00").split(":").map(Number);
+
+    const baseDate = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
+    const now = fromTimestamp !== undefined ? fromTimestamp : Date.now();
+
+    let stepMs = intervalValue * 60 * 60 * 1000;
+    if (intervalUnit === "minutes") stepMs = intervalValue * 60 * 1000;
+    else if (intervalUnit === "days") stepMs = intervalValue * 24 * 60 * 60 * 1000;
+    if (stepMs <= 0) stepMs = 60 * 60 * 1000;
+
+    let current = baseDate.getTime();
+    if (current < now) {
+      const elapsed = now - current;
+      const stepsToSkip = Math.floor(elapsed / stepMs) + 1;
+      current += stepsToSkip * stepMs;
+    }
+
+    const results: Date[] = [];
+    for (let i = 0; i < count; i++) {
+      results.push(new Date(current + i * stepMs));
+    }
+    return results;
+  } catch (err) {
+    console.warn("Error calculating next medicine dates:", err);
+    return [new Date(), new Date(Date.now() + 3600000), new Date(Date.now() + 7200000)];
+  }
+}
+
+export function pauseMedicineReminder(reminderId: string): CareReminder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const existing = getStoredReminders();
+    const updated = existing.map((r) => {
+      if (r.id === reminderId) {
+        return {
+          ...r,
+          status: "paused" as const,
+          active: false,
+        };
+      }
+      return r;
+    });
+    localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(updated));
+    const target = updated.find((r) => r.id === reminderId);
+    if (target) syncReminderToBackend(target, "save");
+    return updated;
+  } catch (e) {
+    console.error("Failed to pause medicine reminder:", e);
+    return getStoredReminders();
+  }
+}
+
+export function resumeMedicineReminder(reminderId: string): CareReminder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const existing = getStoredReminders();
+    const updated = existing.map((r) => {
+      if (r.id === reminderId) {
+        const nextDates = calculateNextMedicineDates(
+          r.startDate || r.dueDate || new Date().toISOString().split("T")[0],
+          r.startTime || r.dueTime || "08:00",
+          r.intervalValue || 4,
+          r.intervalUnit || "hours",
+          1
+        );
+        const nextEpoch = nextDates[0]?.getTime() || Date.now() + 60000;
+        return {
+          ...r,
+          status: "active" as const,
+          active: true,
+          completed: false,
+          nextTriggerTimestamp: nextEpoch,
+        };
+      }
+      return r;
+    });
+    localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(updated));
+    const target = updated.find((r) => r.id === reminderId);
+    if (target) syncReminderToBackend(target, "save");
+    return updated;
+  } catch (e) {
+    console.error("Failed to resume medicine reminder:", e);
+    return getStoredReminders();
+  }
+}
+
 export function toggleReminderCompleted(
   reminderId: string,
   scheduleNextRecurrence: boolean = false
@@ -1417,10 +1551,13 @@ export function toggleReminderCompleted(
     const updated = existing.map((r) => {
       if (r.id === reminderId) {
         const completed = !r.completed;
+        const isMedicine = r.reminderType === "medicine" || r.type === "medicine";
         const updatedItem: CareReminder = {
           ...r,
           completed,
           completedAt: completed ? Date.now() : undefined,
+          status: isMedicine ? (completed ? "completed" : "active") : (completed ? "completed" : "active"),
+          active: isMedicine ? !completed : !completed,
         };
 
         if (completed && scheduleNextRecurrence && r.recurrence && r.recurrence !== "none") {
@@ -1492,10 +1629,10 @@ export function getUpcomingAndOverdueReminders(): {
   in7Days.setDate(in7Days.getDate() + 7);
   const in7DaysStr = in7Days.toISOString().split("T")[0];
 
-  const active = all.filter((r) => !r.completed);
+  const active = all.filter((r) => !r.completed && r.status !== "paused");
 
-  const overdue = active.filter((r) => r.dueDate < todayStr).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const dueToday = active.filter((r) => r.dueDate === todayStr);
+  const overdue = active.filter((r) => r.dueDate < todayStr && r.reminderType !== "medicine").sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const dueToday = active.filter((r) => r.dueDate === todayStr || (r.reminderType === "medicine" && r.dueDate <= todayStr));
   const upcoming = active
     .filter((r) => r.dueDate > todayStr && r.dueDate <= in7DaysStr)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -1504,7 +1641,7 @@ export function getUpcomingAndOverdueReminders(): {
     overdue,
     dueToday,
     upcoming,
-    allActive: active,
+    allActive: all.filter((r) => !r.completed),
   };
 }
 

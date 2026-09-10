@@ -367,8 +367,8 @@ export interface CareReminder {
   animalId?: string;
   animalName: string;
   species?: string;
-  reminderType: "vaccination" | "deworming" | "checkup" | "follow_up" | "wound_observation" | "other";
-  type?: "vaccination" | "deworming" | "checkup" | "follow_up" | "wound_observation" | "other";
+  reminderType: "vaccination" | "deworming" | "checkup" | "follow_up" | "wound_observation" | "medicine" | "other";
+  type?: "vaccination" | "deworming" | "checkup" | "follow_up" | "wound_observation" | "medicine" | "other";
   title: string;
   reason?: string;
   administeredDate?: string; // YYYY-MM-DD (when last given)
@@ -386,6 +386,22 @@ export interface CareReminder {
   prescriptionId?: string;
   screeningId?: string;
   visitId?: string;
+
+  // Medicine reminder specific fields
+  medicineName?: string;
+  startDate?: string; // YYYY-MM-DD
+  startTime?: string; // HH:MM
+  startDateTime?: string; // ISO string
+  intervalValue?: number; // e.g. 5, 10, 15, 30, 1, 2, 4, 6, 8, 12, 24, or custom
+  intervalUnit?: "minutes" | "hours" | "days";
+  durationType?: "indefinite" | "doses" | "days" | "end_date";
+  durationValue?: number; // total doses (if doses) or total days (if days)
+  endDate?: string; // YYYY-MM-DD (if end_date)
+  status?: "active" | "paused" | "completed";
+  active?: boolean;
+  dosesGiven?: number; // count of doses administered/triggered so far
+  lastTriggeredAt?: number;
+  nextTriggerTimestamp?: number;
 }
 
 export interface VetVisit {

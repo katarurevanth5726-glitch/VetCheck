@@ -11,6 +11,8 @@ import {
   saveServerReminder,
   deleteServerReminder,
   completeServerReminder,
+  pauseServerReminder,
+  resumeServerReminder,
   syncClientReminders,
   getAllServerReminders,
 } from "./reminderStore";
@@ -198,6 +200,26 @@ router.post("/api/reminders/:id/complete", (req, res) => {
   const { id } = req.params;
   const completed = completeServerReminder(id);
   res.json({ success: true, reminder: completed });
+});
+
+/**
+ * POST /api/reminders/:id/pause
+ * Pauses future notifications for a medicine reminder
+ */
+router.post("/api/reminders/:id/pause", (req, res) => {
+  const { id } = req.params;
+  const paused = pauseServerReminder(id);
+  res.json({ success: true, reminder: paused });
+});
+
+/**
+ * POST /api/reminders/:id/resume
+ * Resumes future notifications for a medicine reminder
+ */
+router.post("/api/reminders/:id/resume", (req, res) => {
+  const { id } = req.params;
+  const resumed = resumeServerReminder(id);
+  res.json({ success: true, reminder: resumed });
 });
 
 /**

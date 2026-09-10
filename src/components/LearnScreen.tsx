@@ -60,6 +60,7 @@ import {
   toggleReminderCompleted,
   requestNotificationPermission,
   triggerCareNotification,
+  formatIntervalDisplay,
 } from "../utils/storage";
 import { ttsManager } from "../utils/speechHelper";
 import { getTranslation } from "../data/translations";
@@ -1192,7 +1193,7 @@ export const LearnScreen: React.FC<LearnScreenProps> = ({
                               rem.completed ? "line-through text-slate-400" : "text-slate-900"
                             }`}
                           >
-                            {rem.title}
+                            {rem.reminderType === "medicine" ? "💊 " : ""}{rem.title}
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-100">
                             {rem.animalName}
@@ -1200,18 +1201,32 @@ export const LearnScreen: React.FC<LearnScreenProps> = ({
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase">
                             {rem.reminderType.replace("_", " ")}
                           </span>
+                          {rem.reminderType === "medicine" && rem.intervalValue && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                              Every {formatIntervalDisplay(rem.intervalValue, rem.intervalUnit)}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span>{new Date(rem.dueDate).toLocaleDateString()}</span>
-                          </span>
-                          {rem.dueTime && (
+                          {rem.reminderType === "medicine" && rem.nextTriggerTimestamp ? (
                             <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              <span>{rem.dueTime}</span>
+                              <Clock className="w-3 h-3 text-teal-600" />
+                              <span>Next: {new Date(rem.nextTriggerTimestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                             </span>
+                          ) : (
+                            <>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                <span>{new Date(rem.dueDate).toLocaleDateString()}</span>
+                              </span>
+                              {rem.dueTime && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{rem.dueTime}</span>
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
 
