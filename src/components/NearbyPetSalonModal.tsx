@@ -20,6 +20,7 @@ export interface PetSalon {
 }
 import { searchNearbyPetSalonsClient } from "../utils/placesClientFallback";
 import { apiUrl } from "../config/api";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface NearbyPetSalonModalProps {
   isOpen: boolean;
@@ -201,6 +202,12 @@ export const NearbyPetSalonModal: React.FC<NearbyPetSalonModalProps> = ({
   language,
   initialQuery = "",
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "nearby_pet_salon",
+  });
+
   const [salons, setSalons] = useState<PetSalon[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,6 +216,16 @@ export const NearbyPetSalonModal: React.FC<NearbyPetSalonModalProps> = ({
   const [locationPermissionDenied, setLocationPermissionDenied] = useState<boolean>(false);
 
   const t = UI_LABELS[language] || UI_LABELS.en;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   // Auto trigger search on modal open if location is available
   useEffect(() => {

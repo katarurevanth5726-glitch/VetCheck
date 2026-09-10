@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Sparkles,
@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { NavTab } from "../types";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface GuidedDemoModalProps {
   isOpen: boolean;
@@ -35,6 +36,22 @@ export const GuidedDemoModal: React.FC<GuidedDemoModalProps> = ({
   onNavigateTab,
   onLoadDemoData,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "guided_demo",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   const [currentStep, setCurrentStep] = useState(0);
 
   if (!isOpen) return null;

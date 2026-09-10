@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { useModalHistory } from "../../utils/useModalHistory";
 
 interface ModalProps {
   isOpen: boolean;
@@ -10,6 +11,8 @@ interface ModalProps {
   footer?: React.ReactNode;
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
   className?: string;
+  historyKey?: string;
+  disableHistory?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -21,7 +24,16 @@ export const Modal: React.FC<ModalProps> = ({
   footer,
   maxWidth = "md",
   className = "",
+  historyKey = "modal",
+  disableHistory = false,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: historyKey,
+    enabled: !disableHistory,
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {

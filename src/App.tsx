@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { Navbar } from "./components/navigation/Navbar";
 import { BottomNav } from "./components/navigation/BottomNav";
@@ -59,7 +59,32 @@ export default function App() {
 
 function AppContent() {
   const { showToast } = useToast();
-  const [currentTab, setCurrentTab] = useState<NavTab>("home");
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabParam = urlParams.get("tab");
+        if (
+          tabParam &&
+          [
+            "home",
+            "scan",
+            "history",
+            "emergency",
+            "my-animals",
+            "learn",
+            "about",
+            "settings",
+          ].includes(tabParam)
+        ) {
+          return tabParam as NavTab;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return "home";
+  });
   const [scanInitialMode, setScanInitialMode] = useState<"camera" | "gallery">("camera");
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -326,6 +351,168 @@ function AppContent() {
     ttsManager.stop();
   }, [currentTab]);
 
+  // Browser / Device Back-Button Navigation History State Management
+  const historyIndexRef = useRef<number>(0);
+  const isPopstateNavigatingRef = useRef<boolean>(false);
+  const latestResultPayloadRef = useRef<{
+    result: AnalysisResult;
+    imagePreview: string;
+    images?: { type: string; url: string; base64: string }[];
+    selectedAnimal?: string;
+    bodyArea?: string;
+    symptoms?: string;
+    riskFactors?: string[];
+    profileId?: string;
+    record?: ScreeningRecord;
+  } | null>(null);
+
+  const pushScreenNavigation = useCallback(
+    (tab: NavTab, view: "tab" | "result", recordId?: string) => {
+      if (typeof window === "undefined") return;
+      if (isPopstateNavigatingRef.current) return;
+
+      const currentState = window.history.state || {};
+      const hasModalOpen = Boolean(currentState._modalToken);
+
+      const nextIndex = historyIndexRef.current + (hasModalOpen ? 0 : 1);
+      historyIndexRef.current = nextIndex;
+
+      const nextState = {
+        vetcheck: true,
+        tab,
+        view,
+        recordId,
+        historyIndex: nextIndex,
+      };
+
+      try {
+        if (hasModalOpen) {
+          window.history.replaceState(nextState, "");
+        } else {
+          window.history.pushState(nextState, "");
+        }
+      } catch (err) {
+        console.warn("[VetCheck History] pushState failed:", err);
+      }
+    },
+    []
+  );
+
+  const handleNavigateTab = useCallback(
+    (tab: NavTab) => {
+      if (isAnalyzing) handleCancelAnalysis();
+      // If already on this tab without active result and not analyzing, avoid duplicate push
+      if (currentTab === tab && !currentResult && !isAnalyzing) {
+        return;
+      }
+      pushScreenNavigation(tab, "tab");
+      setCurrentResult(null);
+      setActiveRecord(undefined);
+      setCurrentTab(tab);
+    },
+    [currentTab, currentResult, isAnalyzing, pushScreenNavigation]
+  );
+
+  // Initialize root history entry on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const currentState = window.history.state;
+      if (!currentState || !currentState.vetcheck) {
+        window.history.replaceState(
+          {
+            vetcheck: true,
+            tab: currentTab,
+            view: currentResult ? "result" : "tab",
+            recordId: activeRecord?.id,
+            historyIndex: 0,
+          },
+          ""
+        );
+        historyIndexRef.current = 0;
+      } else if (typeof currentState.historyIndex === "number") {
+        historyIndexRef.current = currentState.historyIndex;
+      }
+    } catch (e) {
+      console.warn("[VetCheck History] Initialization error:", e);
+    }
+  }, []);
+
+  // Listen to popstate for in-app screen and result transitions
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+
+      // Handle VetCheck screen navigation
+      if (state && state.vetcheck) {
+        isPopstateNavigatingRef.current = true;
+        if (typeof state.historyIndex === "number") {
+          historyIndexRef.current = state.historyIndex;
+        }
+
+        // Cancel active analysis if back button was pressed during scanning
+        if (analysisAbortControllerRef.current) {
+          analysisAbortControllerRef.current.abort();
+          analysisAbortControllerRef.current = null;
+        }
+        if (analysisTimeoutRef.current) {
+          clearTimeout(analysisTimeoutRef.current);
+          analysisTimeoutRef.current = null;
+        }
+        setIsAnalyzing(false);
+
+        if (state.view === "result") {
+          const matchedRecord =
+            (state.recordId ? history.find((r) => r.id === state.recordId) : null) ||
+            activeRecord ||
+            latestResultPayloadRef.current?.record;
+
+          if (matchedRecord) {
+            setCurrentResult(matchedRecord.result);
+            setCurrentImagePreview(matchedRecord.imageThumbnail);
+            setCurrentImages(matchedRecord.allImages || []);
+            setCurrentSelectedAnimal(matchedRecord.selectedAnimal);
+            setCurrentBodyArea(matchedRecord.bodyArea);
+            setCurrentSymptoms(matchedRecord.symptomsInput);
+            setCurrentRiskFactors(matchedRecord.riskFactorsSelected);
+            setCurrentProfileId(matchedRecord.animalProfileId);
+            setActiveRecord(matchedRecord);
+            setIsCurrentResultSaved(true);
+          } else if (latestResultPayloadRef.current) {
+            const cached = latestResultPayloadRef.current;
+            setCurrentResult(cached.result);
+            setCurrentImagePreview(cached.imagePreview);
+            setCurrentImages(cached.images || []);
+            setCurrentSelectedAnimal(cached.selectedAnimal);
+            setCurrentBodyArea(cached.bodyArea);
+            setCurrentSymptoms(cached.symptoms);
+            setCurrentRiskFactors(cached.riskFactors);
+            setCurrentProfileId(cached.profileId);
+            setActiveRecord(cached.record);
+          }
+          setCurrentTab(state.tab || "scan");
+        } else {
+          // view === "tab"
+          setCurrentResult(null);
+          setActiveRecord(undefined);
+          setCurrentTab(state.tab || "home");
+        }
+
+        setTimeout(() => {
+          isPopstateNavigatingRef.current = false;
+        }, 50);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [history, activeRecord]);
+
   // Sync settings updates
   const handleUpdateSettings = (newPartial: Partial<UserSettings>) => {
     if (newPartial.language) {
@@ -344,6 +531,7 @@ function AppContent() {
     setCurrentResult(null);
     setActiveRecord(undefined);
     setAnalysisError(null);
+    pushScreenNavigation("scan", "tab");
     setCurrentTab("scan");
   };
 
@@ -746,6 +934,8 @@ function AppContent() {
       console.log(`[VetCheck Client] Screening analysis completed in ${Date.now() - requestStartTime} ms`);
       setCurrentResult(analysisData);
 
+      let recordToSave: ScreeningRecord | undefined = undefined;
+
       // Save valid animal screening record ONCE
       if ((analysisData.validAnimalImage || analysisData.isAnimal) && !isCurrentResultSaved) {
         const newRecord: ScreeningRecord = {
@@ -767,7 +957,22 @@ function AppContent() {
         setHistory(updated);
         setActiveRecord(newRecord);
         setIsCurrentResultSaved(true);
+        recordToSave = newRecord;
       }
+
+      latestResultPayloadRef.current = {
+        result: analysisData,
+        imagePreview: payload.imagePreview,
+        images: payload.images,
+        selectedAnimal: payload.selectedAnimal,
+        bodyArea: payload.bodyArea,
+        symptoms: payload.symptoms,
+        riskFactors: payload.riskFactors,
+        profileId: payload.animalProfileId,
+        record: recordToSave || activeRecord,
+      };
+
+      pushScreenNavigation("scan", "result", recordToSave?.id || activeRecord?.id);
     } catch (err: any) {
       console.error("[VetCheck Client] Screening flow error:", err);
 
@@ -1187,6 +1392,18 @@ function AppContent() {
     setActiveRecord(record);
     setIsCurrentResultSaved(true);
     setCurrentTab("scan");
+    latestResultPayloadRef.current = {
+      result: record.result,
+      imagePreview: record.imageThumbnail,
+      images: record.allImages,
+      selectedAnimal: record.selectedAnimal,
+      bodyArea: record.bodyArea,
+      symptoms: record.symptomsInput,
+      riskFactors: record.riskFactorsSelected,
+      profileId: record.animalProfileId,
+      record,
+    };
+    pushScreenNavigation("scan", "result", record.id);
   };
 
   const handleRecordUpdated = (rec: ScreeningRecord) => {
@@ -1300,12 +1517,7 @@ function AppContent() {
         <Navbar
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
-          onNavigate={(tab) => {
-            if (isAnalyzing) handleCancelAnalysis();
-            setCurrentResult(null);
-            setActiveRecord(undefined);
-            setCurrentTab(tab);
-          }}
+          onNavigate={handleNavigateTab}
           currentTab={currentTab}
           onOpenChecklist={() => setIsChecklistOpen(true)}
           onOpenMore={() => setIsMoreOpen(true)}
@@ -1341,21 +1553,18 @@ function AppContent() {
               setActiveRecord(undefined);
               setAnalysisError(null);
               setScanInitialMode("camera");
+              pushScreenNavigation("scan", "tab");
               setCurrentTab("scan");
             }}
             onNavigateEmergency={() => {
-              setCurrentResult(null);
-              setActiveRecord(undefined);
-              setCurrentTab("emergency");
+              handleNavigateTab("emergency");
             }}
             onOpenNearbyVet={() => setIsNearbyVetOpen(true)}
             onRecordUpdated={handleRecordUpdated}
             onReanalyzeWithCorrections={handleReanalyzeWithCorrections}
             isReanalyzing={isAnalyzing}
             onNavigateLearn={() => {
-              setCurrentResult(null);
-              setActiveRecord(undefined);
-              setCurrentTab("learn");
+              handleNavigateTab("learn");
             }}
           />
         ) : (
@@ -1367,11 +1576,7 @@ function AppContent() {
                 recentRecords={history}
                 isOnline={isOnline}
                 onStartScan={handleStartScan}
-                onNavigate={(tab) => {
-                  setCurrentResult(null);
-                  setActiveRecord(undefined);
-                  setCurrentTab(tab);
-                }}
+                onNavigate={handleNavigateTab}
                 onSelectRecord={handleSelectRecordFromHistory}
                 onOpenNearbyVet={() => setIsNearbyVetOpen(true)}
                 onOpenNearbyPetSalons={() => setIsNearbyPetSalonOpen(true)}
@@ -1384,7 +1589,7 @@ function AppContent() {
                 initialMode={scanInitialMode}
                 settings={settings}
                 onAnalyze={handleAnalyzeImage}
-                onCancel={() => setCurrentTab("home")}
+                onCancel={() => handleNavigateTab("home")}
                 onUpdateSettings={handleUpdateSettings}
                 onOpenNearbyVet={() => setIsNearbyVetOpen(true)}
                 isAnalyzing={isAnalyzing}
@@ -1425,9 +1630,7 @@ function AppContent() {
                 profiles={profiles}
                 onOpenNearbyVet={() => setIsNearbyVetOpen(true)}
                 onNavigateEmergency={() => {
-                  setCurrentResult(null);
-                  setActiveRecord(undefined);
-                  setCurrentTab("emergency");
+                  handleNavigateTab("emergency");
                 }}
               />
             )}
@@ -1453,11 +1656,7 @@ function AppContent() {
 
             {currentTab === "about" && (
               <AboutProjectScreen
-                onNavigateTab={(tab) => {
-                  setCurrentResult(null);
-                  setActiveRecord(undefined);
-                  setCurrentTab(tab);
-                }}
+                onNavigateTab={handleNavigateTab}
                 onOpenChecklist={() => setIsChecklistOpen(true)}
               />
             )}
@@ -1480,7 +1679,7 @@ function AppContent() {
                 }}
                 onClearHistoryOnly={handleClearAllHistory}
                 onOpenOnboarding={() => setIsOnboardingOpen(true)}
-                onNavigateTab={setCurrentTab}
+                onNavigateTab={handleNavigateTab}
               />
             )}
           </>
@@ -1490,12 +1689,7 @@ function AppContent() {
       {/* Bottom Navigation Bar */}
       <BottomNav
         currentTab={currentTab}
-        onSelectTab={(tab) => {
-          if (isAnalyzing) handleCancelAnalysis();
-          setCurrentResult(null);
-          setActiveRecord(undefined);
-          setCurrentTab(tab);
-        }}
+        onSelectTab={handleNavigateTab}
         onOpenMore={() => setIsMoreOpen(true)}
         language={settings.language}
       />
@@ -1504,12 +1698,7 @@ function AppContent() {
       <MoreMenuModal
         isOpen={isMoreOpen}
         onClose={() => setIsMoreOpen(false)}
-        onSelectTab={(tab) => {
-          if (isAnalyzing) handleCancelAnalysis();
-          setCurrentResult(null);
-          setActiveRecord(undefined);
-          setCurrentTab(tab);
-        }}
+        onSelectTab={handleNavigateTab}
         onOpenChecklist={() => setIsChecklistOpen(true)}
         onOpenNearbyVet={() => setIsNearbyVetOpen(true)}
         onOpenNearbyPetSalons={() => setIsNearbyPetSalonOpen(true)}
@@ -1521,12 +1710,7 @@ function AppContent() {
       <SubmissionChecklistModal
         isOpen={isChecklistOpen}
         onClose={() => setIsChecklistOpen(false)}
-        onNavigateTab={(tab) => {
-          if (isAnalyzing) handleCancelAnalysis();
-          setCurrentResult(null);
-          setActiveRecord(undefined);
-          setCurrentTab(tab);
-        }}
+        onNavigateTab={handleNavigateTab}
       />
 
       {/* Welcome / Onboarding / Language Selector Modal */}

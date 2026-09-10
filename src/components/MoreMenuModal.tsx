@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   PawPrint,
   Clock,
@@ -14,6 +14,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { NavTab } from "../types";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface MoreMenuModalProps {
   isOpen: boolean;
@@ -36,6 +37,22 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
   animalCount = 0,
   historyCount = 0,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "more_menu",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleNavigate = (tab: NavTab) => {

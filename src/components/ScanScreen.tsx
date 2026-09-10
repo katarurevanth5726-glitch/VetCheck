@@ -36,6 +36,7 @@ import { getTranslation } from "../data/translations";
 import { UserSettings, MultiImageSlot, AnimalProfile } from "../types";
 import { checkImageQuality, rotateImage90, DetailedImageQuality } from "../utils/imageQuality";
 import { getStoredAnimalProfiles } from "../utils/storage";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface ScanScreenProps {
   initialMode?: "camera" | "gallery";
@@ -168,6 +169,22 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
 
   // Consent modal state
   const [showConsentModal, setShowConsentModal] = useState<boolean>(false);
+
+  useModalHistory({
+    isOpen: showConsentModal,
+    onClose: () => setShowConsentModal(false),
+    modalKey: "scan_consent",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showConsentModal) {
+        setShowConsentModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showConsentModal]);
 
   // DOM & Processing Guards
   const videoRef = useRef<HTMLVideoElement | null>(null);

@@ -44,6 +44,7 @@ import { SetFollowUpModal } from "./SetFollowUpModal";
 import { AnimalQRHealthCardModal } from "./AnimalQRHealthCardModal";
 import { downloadPrescriptionPdf } from "../utils/prescriptionPdf";
 import { getRemindersForAnimal, toggleReminderCompleted } from "../utils/storage";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface ProfileScreenProps {
   profiles: AnimalProfile[];
@@ -51,8 +52,8 @@ interface ProfileScreenProps {
   settings: UserSettings;
   onSaveProfile: (profile: AnimalProfile) => void;
   onDeleteProfile: (id: string) => void;
-  onSelectProfileToScan: (profile: AnimalProfile) => void;
-  onSelectRecord: (record: ScreeningRecord) => void;
+  onSelectProfileToScan?: (profile: AnimalProfile) => void;
+  onSelectRecord?: (record: ScreeningRecord) => void;
   onOpenNearbyPetSalons?: () => void;
 }
 
@@ -95,6 +96,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [profileToDelete, setProfileToDelete] = useState<AnimalProfile | null>(null);
   const [activeMenuProfileId, setActiveMenuProfileId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useModalHistory({
+    isOpen: Boolean(profileToDelete),
+    onClose: () => setProfileToDelete(null),
+    modalKey: "delete_profile_confirm",
+  });
 
   const getActiveTab = (profileId: string): "timeline" | "care" | "qr-card" | "screenings" | "details" => {
     return profileTabs[profileId] || "timeline";

@@ -16,6 +16,7 @@ import {
 import { CareReminder, AnimalProfile, UserSettings } from "../types";
 import { saveReminder, deleteReminder, getStoredAnimalProfiles, getStoredReminders } from "../utils/storage";
 import { syncRemindersToServer } from "../utils/pushManager";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface SetFollowUpModalProps {
   isOpen: boolean;
@@ -60,6 +61,22 @@ export const SetFollowUpModal: React.FC<SetFollowUpModalProps> = ({
   settings,
   profiles,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "set_follow_up",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const availableProfiles = profiles || getStoredAnimalProfiles();

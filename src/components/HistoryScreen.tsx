@@ -23,6 +23,7 @@ import { ScreeningRecord, UserSettings } from "../types";
 import { getTranslation } from "../data/translations";
 import { shareScreeningSummary, downloadScreeningSummaryAsTxt } from "../utils/shareHelper";
 import { downloadPrescriptionPdf } from "../utils/prescriptionPdf";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface HistoryScreenProps {
   records: ScreeningRecord[];
@@ -48,6 +49,22 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [confirmClear, setConfirmClear] = useState(false);
   const [sharedToast, setSharedToast] = useState<string | null>(null);
+
+  useModalHistory({
+    isOpen: confirmClear,
+    onClose: () => setConfirmClear(false),
+    modalKey: "clear_history_confirm",
+  });
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && confirmClear) {
+        setConfirmClear(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmClear]);
 
   const animalOptions = [
     { id: "all", label: "All Animals" },

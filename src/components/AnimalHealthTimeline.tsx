@@ -53,6 +53,7 @@ import {
 import { VeterinaryReportModal } from "./VeterinaryReportModal";
 import { PrescriptionModal } from "./PrescriptionModal";
 import { downloadPrescriptionPdf } from "../utils/prescriptionPdf";
+import { useModalHistory } from "../utils/useModalHistory";
 
 export type TimelineFilter =
   | "all"
@@ -108,6 +109,29 @@ export const AnimalHealthTimeline: React.FC<AnimalHealthTimelineProps> = ({
   const [selectedReportRecord, setSelectedReportRecord] = useState<ScreeningRecord | null>(null);
   const [selectedPrescription, setSelectedPrescription] = useState<VeterinaryPrescription | null>(null);
   const [selectedFollowUp, setSelectedFollowUp] = useState<{ log: FollowUpLog; record: ScreeningRecord } | null>(null);
+
+  useModalHistory({
+    isOpen: isAddingVisit,
+    onClose: () => setIsAddingVisit(false),
+    modalKey: "add_vet_visit",
+  });
+
+  useModalHistory({
+    isOpen: Boolean(selectedFollowUp),
+    onClose: () => setSelectedFollowUp(null),
+    modalKey: "recovery_checkpoint",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isAddingVisit) setIsAddingVisit(false);
+        if (selectedFollowUp) setSelectedFollowUp(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAddingVisit, selectedFollowUp]);
 
   // New Visit Form State
   const todayStr = new Date().toISOString().split("T")[0];

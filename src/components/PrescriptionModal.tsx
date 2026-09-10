@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Plus,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { VeterinaryPrescription, PrescriptionMedicine, UserSettings } from "../types";
 import { saveReminder } from "../utils/storage";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface PrescriptionModalProps {
   initialPrescription?: VeterinaryPrescription;
@@ -40,6 +41,22 @@ export const PrescriptionModal: React.FC<PrescriptionModalProps> = ({
   onClose,
   onSave,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "prescription",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const todayStr = new Date().toISOString().split("T")[0];

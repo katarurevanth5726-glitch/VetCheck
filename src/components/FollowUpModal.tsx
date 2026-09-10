@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Calendar,
@@ -21,6 +21,7 @@ import { ScreeningRecord, FollowUpLog, ComparisonResult, UserSettings, AnimalPro
 import { compressImage } from "../utils/imageCompressor";
 import { addFollowUpToRecord } from "../utils/storage";
 import { apiUrl } from "../config/api";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface FollowUpModalProps {
   record: ScreeningRecord;
@@ -37,6 +38,22 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   onClose,
   onSaved,
 }) => {
+  useModalHistory({
+    isOpen: true,
+    onClose,
+    modalKey: "follow_up",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   const [scheduledLabel, setScheduledLabel] = useState<string>("Tomorrow Checkup");
   const [statusCondition, setStatusCondition] = useState<"improving" | "unchanged" | "worsening">("improving");
   const [isEatingDrinking, setIsEatingDrinking] = useState<"yes" | "no" | "partial">("yes");

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Camera,
   HeartPulse,
@@ -15,6 +15,7 @@ import { VetCheckLogo } from "./ui/VetCheckLogo";
 import { Button } from "./ui/Button";
 import { SUPPORTED_LANGUAGES } from "../data/translations";
 import { UserSettings } from "../types";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -33,7 +34,23 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   settings,
   onUpdateSettings,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "onboarding",
+  });
+
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

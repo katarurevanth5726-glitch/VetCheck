@@ -13,6 +13,7 @@ import {
 import { VetHospital } from "../types";
 import { searchNearbyVetsClient } from "../utils/placesClientFallback";
 import { apiUrl } from "../config/api";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface NearbyVetModalProps {
   isOpen: boolean;
@@ -60,43 +61,43 @@ const UI_LABELS: Record<
     addressLabel: "पता",
     phoneLabel: "फ़ोन नंबर",
     noPhone: "फ़ोन नंबर उपलब्ध नहीं है",
-    locationNeeded: "आपके निकट पशु चिकित्सालय खोजने के लिए लोकेशन अनुमति की आवश्यकता है।",
+    locationNeeded: "निकटतम पशु चिकित्सालय खोजने के लिए लोकेशन की अनुमति आवश्यक है।",
     allowLocationBtn: "वर्तमान स्थान का उपयोग करें",
     manualSearchPlaceholder: "गाँव / कस्बा / शहर दर्ज करें (उदा. ओंगोल)",
     searchBtn: "खोजें",
-    noHospitalsFound: "निकट कोई पशु चिकित्सालय नहीं मिला।",
-    unableToSearch: "वर्तमान में पशु चिकित्सालय खोजना संभव नहीं है। कृपया पुनः प्रयास करें।",
-    locationNotFound: "स्थान नहीं मिला। कृपया अपना गाँव, कस्बा या शहर दर्ज करें।",
+    noHospitalsFound: "निकट में कोई पशु चिकित्सालय नहीं मिला।",
+    unableToSearch: "पशु चिकित्सालय खोजने में असमर्थ। पुनः प्रयास करें।",
+    locationNotFound: "स्थान नहीं मिला। कृपया अपना शहर दर्ज करें।",
     callEmergency: "राष्ट्रीय 24x7 हेल्पलाइन (1962)",
   },
   te: {
-    title: "సమీప పశువైద్యశాలలు",
-    findingHospitals: "మీ సమీపంలోని పశువైద్యశాలలను వెతుకుతున్నాము...",
+    title: "సమీప పశు వైద్యశాలలు",
+    findingHospitals: "మీ సమీపంలోని పశు వైద్యశాలల కోసం వెతుకుతోంది...",
     addressLabel: "చిరునామా",
     phoneLabel: "ఫోన్ నంబర్",
     noPhone: "ఫోన్ నంబర్ అందుబాటులో లేదు",
-    locationNeeded: "మీ సమీపంలోని పశువైద్యశాలలను కనుగొనడానికి లొకేషన్ అనుమతి అవసరం.",
-    allowLocationBtn: "ప్రస్తుత లొకేషన్‌ను ఉపయోగించండి",
-    manualSearchPlaceholder: "గ్రామం / పట్టణం / నగరం నమోదు చేయండి (ఉదా: ఒంగోలు)",
+    locationNeeded: "సమీప పశు వైద్యశాలలను కనుగొనడానికి లొకేషన్ అనుమతి అవసరం.",
+    allowLocationBtn: "ప్రస్తుత లొకేషన్ వాడండి",
+    manualSearchPlaceholder: "గ్రామం / పట్టణం / నగరం పేరు నమోదు చేయండి",
     searchBtn: "వెతకండి",
-    noHospitalsFound: "సమీపంలో ఎలాంటి పశువైద్యశాలలు కనుగొనబడలేదు.",
-    unableToSearch: "ప్రస్తుతం పశువైద్యశాలలను శోధించడం సాధ్యపడలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.",
-    locationNotFound: "లొకేషన్ కనుగొనబడలేదు. మీ ఊరు లేదా నగరం పేరు నమోదు చేయండి.",
+    noHospitalsFound: "సమీపంలో ఎలాంటి పశు వైద్యశాలలు దొరకలేదు.",
+    unableToSearch: "పశు వైద్యశాలల సమాచారం పొందలేకపోయాము. దయచేసి మళ్లీ ప్రయత్నించండి.",
+    locationNotFound: "లొకేషన్ గుర్తించలేకపోయాము. దయచేసి మీ ప్రాంతాన్ని నమోదు చేయండి.",
     callEmergency: "జాతీయ 24x7 హెల్ప్‌లైన్ (1962)",
   },
   ta: {
     title: "அருகிலுள்ள கால்நடை மருத்துவமனைகள்",
-    findingHospitals: "உங்கள் அருகிலுள்ள கால்நடை மருத்துவமனைகளைத் தேடுகிறது...",
+    findingHospitals: "கால்நடை மருத்துவமனைகளைத் தேடுகிறது...",
     addressLabel: "முகவரி",
     phoneLabel: "தொலைபேசி எண்",
-    noPhone: "தொலைபேசி எண் கிடைக்கவில்லை",
-    locationNeeded: "அருகிலுள்ள மருத்துவமனைகளைக் கண்டறிய இருப்பிட அனுமதி தேவை.",
-    allowLocationBtn: "தற்போதைய இருப்பிடத்தைப் பயன்படுத்துக",
-    manualSearchPlaceholder: "கிராமம் / நகரம் / மாவட்டத்தை உள்ளிடவும்",
+    noPhone: "தொலைபேசி எண் இல்லை",
+    locationNeeded: "மருத்துவமனைகளைக் கண்டறிய இருப்பிட அனுமதி தேவை.",
+    allowLocationBtn: "தற்போதைய இருப்பிடத்தைப் பயன்படுத்து",
+    manualSearchPlaceholder: "கிராமம் / ஊர் / நகரம் உள்ளிடவும்",
     searchBtn: "தேடு",
     noHospitalsFound: "அருகில் கால்நடை மருத்துவமனைகள் எதுவும் கிடைக்கவில்லை.",
-    unableToSearch: "தற்போது கால்நடை மருத்துவமனைகளைத் தேட முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-    locationNotFound: "இருப்பிடத்தைக் கண்டறிய முடியவில்லை. உங்கள் ஊர் அல்லது நகரத்தை உள்ளிடவும்.",
+    unableToSearch: "தேட முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    locationNotFound: "இருப்பிடத்தைக் கண்டறிய முடியவில்லை.",
     callEmergency: "தேசிய 24x7 உதவி எண் (1962)",
   },
   kn: {
@@ -175,6 +176,12 @@ export const NearbyVetModal: React.FC<NearbyVetModalProps> = ({
   onClose,
   language,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "nearby_vet",
+  });
+
   const langKey = UI_LABELS[language] ? language : "en";
   const t = UI_LABELS[langKey] || UI_LABELS.en;
 
@@ -183,6 +190,16 @@ export const NearbyVetModal: React.FC<NearbyVetModalProps> = ({
   const [permissionDenied, setPermissionDenied] = useState<boolean>(false);
   const [manualLocation, setManualLocation] = useState<string>("");
   const [activeLocationLabel, setActiveLocationLabel] = useState<string>("");
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   // When modal opens, auto-request location and search
   useEffect(() => {

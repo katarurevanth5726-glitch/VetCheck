@@ -29,6 +29,7 @@ import {
 } from "../utils/shareHelper";
 import { ttsManager } from "../utils/speechHelper";
 import { getTranslation } from "../data/translations";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface VeterinaryReportModalProps {
   result?: AnalysisResult;
@@ -51,6 +52,12 @@ export const VeterinaryReportModal: React.FC<VeterinaryReportModalProps> = ({
   settings,
   onClose,
 }) => {
+  useModalHistory({
+    isOpen: true,
+    onClose,
+    modalKey: "full_report",
+  });
+
   const result = propResult || record?.result;
   const lang = settings?.language || "en";
 
@@ -59,15 +66,23 @@ export const VeterinaryReportModal: React.FC<VeterinaryReportModalProps> = ({
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Cancel any speech synthesis if modal is closed / unmounted
+  // Cancel any speech synthesis and handle escape key when modal is open / unmounted
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
       ttsManager.stop();
     };
-  }, []);
+  }, [onClose]);
 
   if (!result) {
     return null;

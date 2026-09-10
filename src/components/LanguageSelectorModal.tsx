@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Globe, Check, Search, X } from "lucide-react";
 import { SUPPORTED_LANGUAGES, getTranslation } from "../data/translations";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface LanguageSelectorModalProps {
   isOpen: boolean;
@@ -15,6 +16,22 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   currentLanguage,
   onSelectLanguage,
 }) => {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "language_selector",
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   const [searchQuery, setSearchQuery] = useState("");
 
   if (!isOpen) return null;

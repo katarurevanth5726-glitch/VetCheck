@@ -41,6 +41,7 @@ import {
 } from "../utils/storage";
 import { downloadHealthCardPdf, generateSafeAnimalQRCodeUrl } from "../utils/qrCardPdf";
 import { downloadVetSharePdf, generateVetShareText } from "../utils/vetSharePdf";
+import { useModalHistory } from "../utils/useModalHistory";
 
 interface AnimalQRHealthCardModalProps {
   isOpen: boolean;
@@ -63,11 +64,27 @@ export function AnimalQRHealthCardModal({
   onOpenEmergency,
   onProfileUpdated,
 }: AnimalQRHealthCardModalProps) {
+  useModalHistory({
+    isOpen,
+    onClose,
+    modalKey: "qr_health_card",
+  });
+
   const [activeTab, setActiveTab] = useState<TabMode>("card");
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copiedId, setCopiedId] = useState<boolean>(false);
   const [copiedShareText, setCopiedShareText] = useState<boolean>(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   // Privacy Settings Local State
   const [privacy, setPrivacy] = useState<AnimalQRPrivacySettings>(() => {
