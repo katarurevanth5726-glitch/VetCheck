@@ -54,16 +54,37 @@ app.use(apiRoutesRouter);
 // Notification & Reminder Scheduler endpoints
 app.use(notificationRouter);
 
-// Verified Gemini Multimodal Candidate Models (Primary -> Fallbacks)
-const DEFAULT_CANDIDATE_MODELS: string[] = Array.from(
-  new Set(
-    [
-      process.env.GEMINI_MODEL,
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-    ].filter(Boolean)
-  )
-) as string[];
+// Safe helper to obtain active Gemini Model candidates
+function getCandidateModels(): string[] {
+  const envModel = (process.env.GEMINI_MODEL || "")
+    .replace(/^["']|["']$/g, "")
+    .trim();
+
+  // Official Gemini candidate multimodal models for veterinary visual screening
+  const standardModels = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+  ];
+
+  const models: string[] = [];
+  if (envModel && envModel !== "your_model_here" && !envModel.includes("placeholder")) {
+    models.push(envModel);
+  }
+
+  for (const m of standardModels) {
+    if (!models.includes(m)) {
+      models.push(m);
+    }
+  }
+
+  return models;
+}
+
+const DEFAULT_CANDIDATE_MODELS: string[] = getCandidateModels();
 
 // Safe helper to obtain active Gemini API Key
 function getApiKey(): string {
@@ -133,7 +154,7 @@ async function generateWithModelFallback({
   parts,
   systemInstruction,
   jsonSchema,
-  candidateModels = DEFAULT_CANDIDATE_MODELS,
+  candidateModels,
 }: {
   parts: any[];
   systemInstruction: string;
@@ -141,16 +162,21 @@ async function generateWithModelFallback({
   candidateModels?: string[];
 }): Promise<{ text: string; modelUsed: string; durationMs: number }> {
   const ai = getGenAI();
+  const models = candidateModels && candidateModels.length > 0 ? candidateModels : getCandidateModels();
   let lastError: any = null;
 
-  for (let i = 0; i < candidateModels.length; i++) {
-    const model = candidateModels[i];
+  const configuredModel = (process.env.GEMINI_MODEL || "").replace(/^["']|["']$/g, "").trim() || "default";
+  console.log(`[Gemini] Configured model: ${configuredModel}`);
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     const isFallback = i > 0;
     const modelStart = Date.now();
 
     try {
+      console.log(`[Gemini] Attempting model: ${model}${isFallback ? " [Fallback]" : " [Primary]"}`);
       console.log(
-        `[VetCheck Server Timing] Gemini request start (Model: ${model}, Attempt ${i + 1}/${candidateModels.length}${
+        `[VetCheck Server Timing] Gemini request start (Model: ${model}, Attempt ${i + 1}/${models.length}${
           isFallback ? " [Fallback]" : " [Primary]"
         })`
       );
@@ -162,9 +188,6 @@ async function generateWithModelFallback({
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: jsonSchema,
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
         },
       });
 
@@ -172,6 +195,7 @@ async function generateWithModelFallback({
       const text = response.text || "";
 
       if (text) {
+        console.log(`[Gemini] Model succeeded: ${model} in ${duration}ms`);
         console.log(`[VetCheck Server Timing] Gemini: ${duration} ms (Model: ${model})`);
         return { text, modelUsed: model, durationMs: duration };
       } else {
@@ -184,6 +208,7 @@ async function generateWithModelFallback({
       const statusCode = typeof err?.status === "number" ? err.status : typeof err?.code === "number" ? err.code : 500;
       const errorCode = err?.code || (statusCode === 404 ? "MODEL_NOT_FOUND" : "GEMINI_ERROR");
 
+      console.warn(`[Gemini] Model failure: ${model} | Status: ${statusCode} | Code: ${errorCode} | ${msg}`);
       console.error(`[VetCheck Server] Gemini error on model ${model} after ${duration}ms | Status: ${statusCode} | Code: ${errorCode} | Message: ${msg}`);
 
       // Immediate stop for non-retryable errors
@@ -210,27 +235,29 @@ async function generateWithModelFallback({
       }
 
       // If we have a fallback model available and haven't tried it yet, try next fallback
-      if (i < candidateModels.length - 1) {
-        console.warn(`[VetCheck Server] Switching to fallback model: ${candidateModels[i + 1]}`);
+      if (i < models.length - 1) {
+        console.log(`[Gemini] Falling back to: ${models[i + 1]}`);
+        console.warn(`[VetCheck Server] Switching to fallback model: ${models[i + 1]}`);
         continue;
       }
     }
   }
 
-  throw lastError || new Error("All Gemini models are currently unavailable.");
+  throw lastError || new Error("All candidate Gemini models failed.");
 }
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   const apiKeyConfigured = Boolean(getApiKey());
+  const models = getCandidateModels();
   res.json({
     success: true,
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "VetCheck API",
-    models: DEFAULT_CANDIDATE_MODELS,
-    primaryModel: DEFAULT_CANDIDATE_MODELS[0] || "gemini-2.5-flash",
-    fallbackModels: DEFAULT_CANDIDATE_MODELS.slice(1),
+    models,
+    primaryModel: models[0] || "gemini-3.6-flash",
+    fallbackModels: models.slice(1),
     geminiConfigured: apiKeyConfigured,
   });
 });
