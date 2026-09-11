@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { VetHospital } from "../types";
-import { searchNearbyVetsClient } from "../utils/placesClientFallback";
+import { searchNearbyVetsClient, formatDistance } from "../utils/placesClientFallback";
 import { apiUrl } from "../config/api";
 import { useModalHistory } from "../utils/useModalHistory";
 
@@ -264,7 +264,8 @@ export const NearbyVetModal: React.FC<NearbyVetModalProps> = ({
 
       const list: VetHospital[] = data.hospitals || [];
       if (list.length > 0) {
-        setHospitals(list.slice(0, 5));
+        list.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+        setHospitals(list.slice(0, 10));
         setSearchStatus("success");
       } else {
         setHospitals([]);
@@ -517,7 +518,7 @@ export const NearbyVetModal: React.FC<NearbyVetModalProps> = ({
                         </h3>
                         {hospital.distanceKm !== undefined && (
                           <span className="text-[11px] font-semibold text-stone-500">
-                            ~{hospital.distanceKm} km away
+                            ~{formatDistance(hospital.distanceKm)} away
                           </span>
                         )}
                       </div>

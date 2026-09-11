@@ -18,6 +18,11 @@ export interface PetSalon {
   address: string;
   phone: string | null;
   distanceKm?: number;
+  latitude?: number;
+  longitude?: number;
+  googleMapsUrl?: string;
+  openNow?: boolean;
+  source?: string;
 }
 
 const vetPlacesRouter = express.Router();
@@ -279,7 +284,7 @@ function createVetHospital(data: {
     name: data.name.trim(),
     address: data.address.trim(),
     phone: cleanPhone(data.phone),
-    distanceKm: data.distanceKm !== undefined ? Number(data.distanceKm.toFixed(1)) : undefined,
+    distanceKm: data.distanceKm !== undefined ? Number(data.distanceKm.toFixed(2)) : undefined,
     ambulanceStatus,
     ambulanceAvailability,
     ambulancePhone: verifiedAmbPhone || null,
@@ -334,8 +339,8 @@ function findVerifiedHospitals(query: string, lat: number | null, lng: number | 
     }
   }
 
-  matches.sort((a, b) => a.distance - b.distance);
-  return matches.slice(0, 5).map((m) => m.item);
+  matches.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+  return matches.slice(0, 10).map((m) => m.item);
 }
 
 /**
@@ -349,7 +354,7 @@ function cleanPhone(rawPhone?: string | null): string | null {
 }
 
 /**
- * Haversine formula to compute great-circle distance in km
+ * Haversine formula to compute great-circle distance in km with 2-decimal precision
  */
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -362,7 +367,7 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10;
+  return Math.round(R * c * 100) / 100;
 }
 
 /**
@@ -425,6 +430,54 @@ async function geocodeLocation(
 
   return null;
 }
+
+/**
+ * Reverse geocode lat/lng to real formatted address
+ */
+async function reverseGeocodeLocation(
+  lat: number,
+  lng: number,
+  apiKey: string
+): Promise<string | null> {
+  // 1. Google Geocoding API if key is present
+  if (apiKey) {
+    try {
+      const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+      const res = await fetch(geoUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          return data.results[0].formatted_address || null;
+        }
+      }
+    } catch (err) {
+      console.warn("[Reverse Geocode] Google Geocoding failed:", err);
+    }
+  }
+
+  // 2. OpenStreetMap Nominatim reverse geocoding fallback
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18`;
+    const nomRes = await fetch(nomUrl, {
+      headers: { "User-Agent": "VetCheck-App/1.0 (animal health assistant)" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (nomRes.ok) {
+      const nomData = await nomRes.json();
+      if (nomData && nomData.display_name) {
+        return nomData.display_name;
+      }
+    }
+  } catch (nomErr) {
+    console.warn("[Nominatim] Reverse geocode error:", nomErr);
+  }
+
+  return null;
+}
+
 
 /**
  * Search places nearby using Google Places API (New) with progressive radius and multi-term queries
@@ -625,17 +678,11 @@ vetPlacesRouter.get("/api/places/nearby-vets", async (req, res) => {
       const allHospitals = Array.from(placesMap.values());
 
       if (allHospitals.length > 0) {
-        // Sort primarily by proximity when distance is available
-        allHospitals.sort((a, b) => {
-          if (a.distanceKm !== undefined && b.distanceKm !== undefined) {
-            return a.distanceKm - b.distanceKm;
-          }
-          return 0;
-        });
+        allHospitals.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 
         return res.json({
           status: "success",
-          hospitals: allHospitals.slice(0, 5),
+          hospitals: allHospitals.slice(0, 10),
           location: resolvedAddress,
           source: "google_places",
         });
@@ -737,10 +784,10 @@ vetPlacesRouter.get("/api/places/nearby-vets", async (req, res) => {
             }
 
             if (list.length > 0) {
-              list.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+              list.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
               return res.json({
                 status: "success",
-                hospitals: list.slice(0, 5),
+                hospitals: list.slice(0, 10),
                 location: resolvedAddress,
                 source: "osm_overpass",
               });
@@ -756,9 +803,10 @@ vetPlacesRouter.get("/api/places/nearby-vets", async (req, res) => {
   // Strategy 3: Verified Government Veterinary Polyclinics / Hospitals directory matching
   const verifiedMatches = findVerifiedHospitals(query, lat, lng);
   if (verifiedMatches.length > 0) {
+    verifiedMatches.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     return res.json({
       status: "success",
-      hospitals: verifiedMatches.slice(0, 5),
+      hospitals: verifiedMatches.slice(0, 10),
       location: resolvedAddress || query || "Emergency Veterinary Directory",
       source: "verified_gov_directory",
     });
@@ -822,15 +870,18 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
     });
   }
 
-  // Multi-term queries as requested:
-  // "pet salon", "pet grooming", "dog grooming", "cat grooming", "pet spa", "pet grooming center"
+  // Multi-term queries:
+  // "pet grooming", "pet groomer", "pet salon", "pet spa", "dog grooming", "cat grooming", "pet care center"
   const multiTerms = [
-    "pet salon",
     "pet grooming",
+    "pet groomer",
+    "pet salon",
+    "pet spa",
     "dog grooming",
     "cat grooming",
-    "pet spa",
-    "pet grooming center",
+    "pet care center",
+    "dog spa",
+    "pet parlour",
   ];
 
   const searchQueries = query
@@ -842,12 +893,12 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
     try {
       const placesMap = new Map<string, PetSalon>();
 
-      // A. Text searches across the multi-terms
-      for (const tQuery of searchQueries) {
+      // Search across multi-term text queries with progressive radius
+      for (const tQuery of searchQueries.slice(0, 5)) {
         try {
           const body: Record<string, any> = {
             textQuery: tQuery,
-            maxResultCount: 8,
+            maxResultCount: 10,
           };
 
           if (lat !== null && lng !== null) {
@@ -865,7 +916,7 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
               "Content-Type": "application/json",
               "X-Goog-Api-Key": apiKey,
               "X-Goog-FieldMask":
-                "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.location",
+                "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.location,places.regularOpeningHours,places.googleMapsUri",
             },
             body: JSON.stringify(body),
           });
@@ -875,11 +926,17 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
             const places = data.places || [];
             for (const p of places) {
               const name = p.displayName?.text;
-              const address = p.formattedAddress;
-              if (name && address) {
-                const key = `${name.toLowerCase().trim()}_${address.toLowerCase().trim()}`;
-                const pLat = p.location?.latitude;
-                const pLng = p.location?.longitude;
+              let address = p.formattedAddress || p.shortFormattedAddress || null;
+              const pLat = p.location?.latitude;
+              const pLng = p.location?.longitude;
+
+              if (!address && pLat && pLng) {
+                address = await reverseGeocodeLocation(pLat, pLng, apiKey);
+              }
+              const finalAddress = address || "Address not available";
+
+              if (name) {
+                const key = `${name.toLowerCase().trim()}_${finalAddress.toLowerCase().trim()}`;
                 const dist =
                   lat !== null && lng !== null && pLat && pLng
                     ? calculateDistanceKm(lat, lng, pLat, pLng)
@@ -888,9 +945,20 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
                 if (!placesMap.has(key)) {
                   placesMap.set(key, {
                     name,
-                    address,
+                    address: finalAddress,
                     phone: cleanPhone(p.nationalPhoneNumber || p.internationalPhoneNumber),
                     distanceKm: dist,
+                    latitude: pLat,
+                    longitude: pLng,
+                    googleMapsUrl:
+                      p.googleMapsUri ||
+                      (p.id
+                        ? `https://www.google.com/maps/place/?q=place_id:${p.id}`
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            name + (finalAddress !== "Address not available" ? " " + finalAddress : "")
+                          )}`),
+                    openNow: p.regularOpeningHours?.openNow,
+                    source: "google_places",
                   });
                 }
               }
@@ -904,65 +972,67 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
       const allSalons = Array.from(placesMap.values());
 
       if (allSalons.length > 0) {
-        // Sort by proximity when distance is available
-        allSalons.sort((a, b) => {
-          if (a.distanceKm !== undefined && b.distanceKm !== undefined) {
-            return a.distanceKm - b.distanceKm;
-          }
-          return 0;
-        });
+        allSalons.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 
         return res.json({
           status: "success",
-          salons: allSalons.slice(0, 5),
+          salons: allSalons.slice(0, 10),
           location: resolvedAddress,
           source: "google_places",
         });
       }
     } catch (err) {
       console.error("[Pet Salons Places API] Fatal error:", err);
-      return res.status(200).json({
-        status: "api_unavailable",
-        salons: [],
-        message: "Unable to search pet salons right now. Please try again.",
-      });
     }
   }
 
-  // Strategy 2: OpenStreetMap Overpass API (Real Open Data Fallback)
+  // Strategy 2: OpenStreetMap Overpass API (Real Open Data Fallback with Progressive Radii)
   if (lat !== null && lng !== null) {
     try {
-      for (const radius of [25000, 50000]) {
+      const list: PetSalon[] = [];
+      const seen = new Set<string>();
+      const searchRadii = [5000, 10000, 20000, 35000];
+
+      for (const radius of searchRadii) {
+        if (list.length >= 5) break;
+
         const overpassQuery = `
           [out:json][timeout:12];
           (
             node["shop"="pet_grooming"](around:${radius}, ${lat}, ${lng});
             way["shop"="pet_grooming"](around:${radius}, ${lat}, ${lng});
-            node["name"~"grooming|pet salon|pet spa|dog grooming|cat grooming",i](around:${radius}, ${lat}, ${lng});
-            way["name"~"grooming|pet salon|pet spa|dog grooming|cat grooming",i](around:${radius}, ${lat}, ${lng});
+            relation["shop"="pet_grooming"](around:${radius}, ${lat}, ${lng});
+            node["amenity"="pet_grooming"](around:${radius}, ${lat}, ${lng});
+            way["amenity"="pet_grooming"](around:${radius}, ${lat}, ${lng});
+            node["craft"="pet_groomer"](around:${radius}, ${lat}, ${lng});
+            way["craft"="pet_groomer"](around:${radius}, ${lat}, ${lng});
+            node["shop"="pet"]["grooming"="yes"](around:${radius}, ${lat}, ${lng});
+            way["shop"="pet"]["grooming"="yes"](around:${radius}, ${lat}, ${lng});
             node["shop"="pet"]["service:grooming"="yes"](around:${radius}, ${lat}, ${lng});
+            way["shop"="pet"]["service:grooming"="yes"](around:${radius}, ${lat}, ${lng});
+            node["shop"="pet"]["name"~"groom|salon|spa|care|bath|parlour|parlor|style",i](around:${radius}, ${lat}, ${lng});
+            way["shop"="pet"]["name"~"groom|salon|spa|care|bath|parlour|parlor|style",i](around:${radius}, ${lat}, ${lng});
+            node["name"~"pet grooming|dog grooming|cat grooming|pet salon|pet spa|dog spa|pet care|pet parlour|pet parlor",i](around:${radius}, ${lat}, ${lng});
+            way["name"~"pet grooming|dog grooming|cat grooming|pet salon|pet spa|dog spa|pet care|pet parlour|pet parlor",i](around:${radius}, ${lat}, ${lng});
           );
-          out center 15;
+          out center 25;
         `;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-        const overpassRes = await fetch("https://overpass-api.de/api/interpreter", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `data=${encodeURIComponent(overpassQuery)}`,
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
+        try {
+          const overpassRes = await fetch("https://overpass-api.de/api/interpreter", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `data=${encodeURIComponent(overpassQuery)}`,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-        if (overpassRes.ok) {
-          const osmData = await overpassRes.json();
-          const elements = osmData.elements || [];
-
-          if (elements.length > 0) {
-            const list: PetSalon[] = [];
-            const seen = new Set<string>();
+          if (overpassRes.ok) {
+            const osmData = await overpassRes.json();
+            const elements = osmData.elements || [];
 
             for (const el of elements) {
               const tags = el.tags || {};
@@ -971,11 +1041,19 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
                 tags["name:en"] ||
                 tags["name:te"] ||
                 tags["name:hi"] ||
+                tags["name:ta"] ||
+                tags["name:kn"] ||
+                tags["name:ml"] ||
+                tags["name:mr"] ||
+                tags["name:bn"] ||
                 "Pet Grooming Salon";
 
               const addrParts: string[] = [];
               if (tags["addr:housenumber"]) addrParts.push(tags["addr:housenumber"]);
+              if (tags["addr:building"] || tags["addr:unit"])
+                addrParts.push(tags["addr:building"] || tags["addr:unit"]);
               if (tags["addr:street"]) addrParts.push(tags["addr:street"]);
+              if (tags["addr:place"]) addrParts.push(tags["addr:place"]);
               if (tags["addr:suburb"] || tags["addr:neighbourhood"])
                 addrParts.push(tags["addr:suburb"] || tags["addr:neighbourhood"]);
               if (tags["addr:city"] || tags["addr:town"] || tags["addr:village"])
@@ -984,64 +1062,74 @@ vetPlacesRouter.get("/api/places/nearby-pet-salons", async (req, res) => {
               if (tags["addr:state"]) addrParts.push(tags["addr:state"]);
               if (tags["addr:postcode"]) addrParts.push(tags["addr:postcode"]);
 
-              const address =
+              let address =
                 addrParts.length > 0
                   ? addrParts.join(", ")
-                  : tags["addr:full"] ||
-                    (resolvedAddress ? `${resolvedAddress}` : "Local Pet Salon");
+                  : (tags["addr:full"] || null);
+
+              const elLat = el.lat || el.center?.lat;
+              const elLon = el.lon || el.center?.lon;
+
+              if (!address && elLat && elLon) {
+                address = await reverseGeocodeLocation(elLat, elLon, apiKey);
+              }
+
+              const finalAddress = address || "Address not available";
 
               const rawPhone =
                 tags.phone ||
                 tags["contact:phone"] ||
                 tags["phone:mobile"] ||
+                tags["emergency:phone"] ||
                 null;
               const phone = cleanPhone(rawPhone);
 
-              const elLat = el.lat || el.center?.lat;
-              const elLon = el.lon || el.center?.lon;
               const dist =
                 elLat && elLon ? calculateDistanceKm(lat, lng, elLat, elLon) : undefined;
 
-              const dedupeKey = `${name.toLowerCase()}_${address.toLowerCase()}`;
+              const dedupeKey = `${name.toLowerCase().trim()}_${(elLat || 0).toFixed(3)}_${(elLon || 0).toFixed(3)}`;
               if (!seen.has(dedupeKey)) {
                 seen.add(dedupeKey);
-                list.push({ name, address, phone, distanceKm: dist });
+                list.push({
+                  name,
+                  address: finalAddress,
+                  phone,
+                  distanceKm: dist,
+                  latitude: elLat,
+                  longitude: elLon,
+                  googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    name + (finalAddress !== "Address not available" ? " " + finalAddress : "")
+                  )}`,
+                  openNow: tags.opening_hours === "24/7" ? true : undefined,
+                  source: "osm_overpass",
+                });
               }
             }
-
-            if (list.length > 0) {
-              list.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-              return res.json({
-                status: "success",
-                salons: list.slice(0, 5),
-                location: resolvedAddress,
-                source: "osm_overpass",
-              });
-            }
           }
+        } catch (osmRadiusErr) {
+          console.warn(`[OSM Overpass Pet Salons] Error at radius ${radius}m:`, osmRadiusErr);
         }
+      }
+
+      if (list.length > 0) {
+        list.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+        return res.json({
+          status: "success",
+          salons: list.slice(0, 10),
+          location: resolvedAddress,
+          source: "osm_overpass",
+        });
       }
     } catch (osmErr) {
       console.warn("[OSM Overpass Pet Salons] Query error:", osmErr);
     }
   }
 
-  // If no API key was configured and OSM yielded zero results
-  if (!apiKey) {
-    return res.json({
-      status: "api_key_required",
-      salons: [],
-      message:
-        "Google Maps Platform API key is required to query live pet salon directories in this area.",
-      configNeeded: true,
-    });
-  }
-
   return res.json({
     status: "no_results",
     salons: [],
     location: resolvedAddress,
-    message: "No pet salons found nearby. Try another location.",
+    message: "No verified pet grooming centers found nearby.",
   });
 });
 
