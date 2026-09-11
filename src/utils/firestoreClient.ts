@@ -28,8 +28,8 @@ export function getClientFirestore(): Firestore | null {
 
   try {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    const databaseId = (firebaseConfig as any).firestoreDatabaseId || "(default)";
-    clientDb = getFirestore(app);
+    const databaseId = (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId || "(default)";
+    clientDb = databaseId && databaseId !== "(default)" ? getFirestore(app, databaseId) : getFirestore(app);
     return clientDb;
   } catch (err) {
     console.warn("[VetCheck Client Firestore] Init warning:", err);
@@ -40,16 +40,16 @@ export function getClientFirestore(): Firestore | null {
 /**
  * Recursively removes any `undefined` values from an object/array so Firestore setDoc never fails.
  */
-export function cleanForFirestoreClient<T extends Record<string, any>>(obj: T): Record<string, any> {
-  const clean: Record<string, any> = {};
+export function cleanForFirestoreClient<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value === undefined) continue;
     if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
-      clean[key] = cleanForFirestoreClient(value);
+      clean[key] = cleanForFirestoreClient(value as Record<string, unknown>);
     } else if (Array.isArray(value)) {
       clean[key] = value
         .filter((item) => item !== undefined)
-        .map((item) => (item !== null && typeof item === "object" && !(item instanceof Date) ? cleanForFirestoreClient(item) : item));
+        .map((item) => (item !== null && typeof item === "object" && !(item instanceof Date) ? cleanForFirestoreClient(item as Record<string, unknown>) : item));
     } else {
       clean[key] = value;
     }

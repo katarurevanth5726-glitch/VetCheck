@@ -837,7 +837,7 @@ export function deleteScreeningRecord(id: string): ScreeningRecord[] {
     const history = getStoredHistory();
     const updated = history.filter((r) => r.id !== id);
     safeSetLocalStorageItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
-    syncScanToBackend({ id } as any, "delete");
+    syncScanToBackend({ id }, "delete");
     return updated;
   } catch (e) {
     console.error("Failed to delete record:", e);
@@ -1076,7 +1076,7 @@ export function deleteAnimalProfile(id: string): AnimalProfile[] {
       if (rawChecklists) {
         const checklists = JSON.parse(rawChecklists);
         if (Array.isArray(checklists)) {
-          const updatedChecklists = checklists.filter((c: any) => c.animalProfileId !== id);
+          const updatedChecklists = checklists.filter((c: { animalProfileId?: string }) => c.animalProfileId !== id);
           localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(updatedChecklists));
         }
       }
@@ -1085,7 +1085,7 @@ export function deleteAnimalProfile(id: string): AnimalProfile[] {
     }
 
     // 7. Sync deletion to backend / Firestore
-    syncAnimalToBackend({ id } as any, "delete");
+    syncAnimalToBackend({ id }, "delete");
 
     return updated;
   } catch (e) {
@@ -1104,7 +1104,7 @@ export function deleteAnimalProfileAndData(
     let updatedHistory = getStoredHistory();
 
     if (deleteLinkedRecords) {
-      updatedHistory = updatedHistory.filter((r) => r.animalProfileId !== profileId && (r as any).animalId !== profileId);
+      updatedHistory = updatedHistory.filter((r) => r.animalProfileId !== profileId && (r as { animalId?: string }).animalId !== profileId);
     } else {
       // Unlink profile from records rather than deleting history
       updatedHistory = updatedHistory.map((r) =>
@@ -1420,7 +1420,7 @@ export function deleteReminder(reminderId: string): CareReminder[] {
     const existing = getStoredReminders();
     const updated = existing.filter((r) => r.id !== reminderId);
     localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(updated));
-    syncReminderToBackend({ id: reminderId } as any, "delete");
+    syncReminderToBackend({ id: reminderId }, "delete");
     return updated;
   } catch (e) {
     console.error("Failed to delete reminder:", e);
@@ -1629,7 +1629,7 @@ export function getUpcomingAndOverdueReminders(): {
   in7Days.setDate(in7Days.getDate() + 7);
   const in7DaysStr = in7Days.toISOString().split("T")[0];
 
-  const active = all.filter((r) => !r.completed && r.status !== "paused");
+  const active = all.filter((r) => !r.completed && r.status !== "paused" && r.active !== false);
 
   const overdue = active.filter((r) => r.dueDate < todayStr && r.reminderType !== "medicine").sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   const dueToday = active.filter((r) => r.dueDate === todayStr || (r.reminderType === "medicine" && r.dueDate <= todayStr));
@@ -1641,7 +1641,7 @@ export function getUpcomingAndOverdueReminders(): {
     overdue,
     dueToday,
     upcoming,
-    allActive: all.filter((r) => !r.completed),
+    allActive: active,
   };
 }
 
@@ -1952,7 +1952,7 @@ export function deleteVeterinaryPrescription(
     console.error("Failed to delete veterinary prescription:", e);
     return { prescriptions: getStoredPrescriptions(), history: getStoredHistory() };
   } finally {
-    syncPrescriptionToBackend({ id: prescriptionId } as any, "delete");
+    syncPrescriptionToBackend({ id: prescriptionId }, "delete");
   }
 }
 
@@ -2052,7 +2052,7 @@ export function deleteVetVisit(visitId: string): VetVisit[] {
     const existing = getStoredVetVisits();
     const updated = existing.filter((v) => v.id !== visitId);
     localStorage.setItem(VET_VISITS_STORAGE_KEY, JSON.stringify(updated));
-    syncVetVisitToBackend({ id: visitId } as any, "delete");
+    syncVetVisitToBackend({ id: visitId }, "delete");
     return updated;
   } catch (e) {
     console.error("Failed to delete vet visit:", e);
@@ -2174,9 +2174,9 @@ export function calculateDeviceAnalytics(
     // Extract animal string safely
     let rawAnimal = "Other";
     if (record.selectedAnimal) {
-      rawAnimal = typeof record.selectedAnimal === "string" ? record.selectedAnimal : (record.selectedAnimal as any).commonName || "Other";
+      rawAnimal = typeof record.selectedAnimal === "string" ? record.selectedAnimal : (record.selectedAnimal as { commonName?: string }).commonName || "Other";
     } else if (record.result?.detectedAnimal) {
-      rawAnimal = typeof record.result.detectedAnimal === "string" ? record.result.detectedAnimal : (record.result.detectedAnimal as any).commonName || "Other";
+      rawAnimal = typeof record.result.detectedAnimal === "string" ? record.result.detectedAnimal : (record.result.detectedAnimal as { commonName?: string }).commonName || "Other";
     }
     const animalLower = rawAnimal.toLowerCase();
     let normalizedAnimal = rawAnimal;
@@ -2232,8 +2232,8 @@ export function calculateDeviceAnalytics(
     // Image quality
     const rawQuality = record.result?.imageQuality;
     const qRating: "Good" | "Acceptable" | "Poor" | "Unusable" =
-      typeof rawQuality === "object" && rawQuality !== null && "rating" in rawQuality
-        ? ((rawQuality as any).rating as "Good" | "Acceptable" | "Poor" | "Unusable")
+      typeof rawQuality === "object" && rawQuality !== null && "rating" in rawQuality && typeof (rawQuality as { rating?: unknown }).rating === "string"
+        ? ((rawQuality as { rating: "Good" | "Acceptable" | "Poor" | "Unusable" }).rating)
         : typeof rawQuality === "string" && (rawQuality === "Good" || rawQuality === "Acceptable" || rawQuality === "Poor" || rawQuality === "Unusable")
         ? rawQuality
         : "Good";

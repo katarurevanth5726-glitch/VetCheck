@@ -266,7 +266,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               </label>
               <select
                 value={sex}
-                onChange={(e) => setSex(e.target.value as any)}
+                onChange={(e) => setSex(e.target.value as "Male" | "Female" | "Unknown")}
                 className="w-full text-xs p-2.5 rounded-lg border border-[#E5E3DC] bg-[#FAF9F5] focus:bg-white focus:outline-hidden focus:border-[#315C4C] font-normal text-[#252A27]"
               >
                 <option value="Female">Female</option>

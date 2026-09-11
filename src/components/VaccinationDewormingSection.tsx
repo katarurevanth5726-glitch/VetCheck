@@ -484,7 +484,7 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
               </label>
               <select
                 value={recurrence}
-                onChange={(e) => setRecurrence(e.target.value as any)}
+                onChange={(e) => setRecurrence(e.target.value as "none" | "3_months" | "6_months" | "1_year")}
                 className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-stone-50 focus:bg-white font-medium"
               >
                 <option value="none">One-time only</option>
@@ -518,7 +518,7 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
               </label>
               <select
                 value={notifyAdvance}
-                onChange={(e) => setNotifyAdvance(e.target.value as any)}
+                onChange={(e) => setNotifyAdvance(e.target.value as "same_day" | "1_day_before" | "7_days_before")}
                 className="w-full text-xs p-2 rounded-xl border border-teal-200 bg-white font-medium focus:outline-hidden focus:border-teal-600"
               >
                 <option value="same_day">On due date (Morning of)</option>
@@ -595,18 +595,20 @@ export const VaccinationDewormingSection: React.FC<VaccinationDewormingSectionPr
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        {[
-          { id: "active", label: `Upcoming / Due (${activeReminders.length})` },
-          { id: "medicine", label: `Medicine (${reminders.filter((r) => r.reminderType === "medicine" && !r.completed && r.status !== "completed").length})` },
-          { id: "completed", label: `Completed (${reminders.filter((r) => r.completed || r.status === "completed").length})` },
-          { id: "vaccination", label: "Vaccines" },
-          { id: "deworming", label: "Deworming" },
-          { id: "all", label: `All (${reminders.length})` },
-        ].map((tab) => (
+        {(
+          [
+            { id: "active", label: `Upcoming / Due (${activeReminders.length})` },
+            { id: "medicine", label: `Medicine (${reminders.filter((r) => r.reminderType === "medicine" && !r.completed && r.status !== "completed").length})` },
+            { id: "completed", label: `Completed (${reminders.filter((r) => r.completed || r.status === "completed").length})` },
+            { id: "vaccination", label: "Vaccines" },
+            { id: "deworming", label: "Deworming" },
+            { id: "all", label: `All (${reminders.length})` },
+          ] as const
+        ).map((tab) => (
           <button
             key={tab.id}
             type="button"
-            onClick={() => setFilterType(tab.id as any)}
+            onClick={() => setFilterType(tab.id)}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
               filterType === tab.id
                 ? "bg-[#154734] text-white shadow-2xs"

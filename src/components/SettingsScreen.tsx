@@ -268,14 +268,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: "normal", label: getTranslation(lang, "fontSizeNormal"), sizeText: "Aa (16px)" },
-              { id: "large", label: getTranslation(lang, "fontSizeLarge"), sizeText: "Aa (18px)" },
-              { id: "extra-large", label: getTranslation(lang, "fontSizeExtraLarge"), sizeText: "Aa (20px)" },
-            ].map((f) => (
+            {(
+              [
+                { id: "normal", label: getTranslation(lang, "fontSizeNormal"), sizeText: "Aa (16px)" },
+                { id: "large", label: getTranslation(lang, "fontSizeLarge"), sizeText: "Aa (18px)" },
+                { id: "extra-large", label: getTranslation(lang, "fontSizeExtraLarge"), sizeText: "Aa (20px)" },
+              ] as const
+            ).map((f) => (
               <button
                 key={f.id}
-                onClick={() => onUpdateSettings({ fontSize: f.id as any })}
+                onClick={() => onUpdateSettings({ fontSize: f.id })}
                 className={`py-2.5 px-2 rounded-xl border text-center transition-colors cursor-pointer ${
                   settings.fontSize === f.id
                     ? "bg-[#315C4C] text-white border-[#25473B] font-bold shadow-xs"

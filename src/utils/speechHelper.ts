@@ -180,15 +180,51 @@ export interface VoiceRecognitionOptions {
   onEnd: () => void;
 }
 
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error?: string;
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type WindowWithSpeech = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionInstance;
+  webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+};
+
 export class VoiceRecognizer {
-  private recognition: any = null;
+  private recognition: SpeechRecognitionInstance | null = null;
   private isListening = false;
   private lastOptions: VoiceRecognitionOptions | null = null;
 
   constructor() {
     if (typeof window !== "undefined") {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const win = window as unknown as WindowWithSpeech;
+      const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
       if (SpeechRecognition) {
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = false;
@@ -227,7 +263,7 @@ export class VoiceRecognizer {
       options.onStart();
     };
 
-    this.recognition.onresult = (event: any) => {
+    this.recognition.onresult = (event: SpeechRecognitionEventLike) => {
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
@@ -239,7 +275,7 @@ export class VoiceRecognizer {
       options.onResult(finalTranscript || interim);
     };
 
-    this.recognition.onerror = (event: any) => {
+    this.recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
       this.isListening = false;
       const err = event.error || "";
       if (err === "not-allowed" || err === "permission-denied") {
@@ -261,9 +297,10 @@ export class VoiceRecognizer {
 
     try {
       this.recognition.start();
-    } catch (e: any) {
+    } catch (e) {
       this.isListening = false;
-      options.onError("error", e.message || "Failed to start recognition");
+      const msg = e instanceof Error ? e.message : "Failed to start recognition";
+      options.onError("error", msg);
     }
   }
 
@@ -271,7 +308,7 @@ export class VoiceRecognizer {
     if (this.recognition && this.isListening) {
       try {
         this.recognition.stop();
-      } catch (e) {
+      } catch {
         // ignore
       }
       this.isListening = false;

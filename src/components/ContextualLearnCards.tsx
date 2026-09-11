@@ -40,7 +40,9 @@ export const ContextualLearnCards: React.FC<ContextualLearnCardsProps> = ({
 
   const safeAnimalType =
     typeof animalType === "object" && animalType !== null
-      ? (animalType as any).name || "animals"
+      ? (animalType as { name?: string; commonName?: string }).name ||
+        (animalType as { name?: string; commonName?: string }).commonName ||
+        "animals"
       : typeof animalType === "string" && animalType
       ? animalType
       : "animals";

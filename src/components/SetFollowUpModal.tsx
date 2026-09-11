@@ -584,7 +584,7 @@ export const SetFollowUpModal: React.FC<SetFollowUpModalProps> = ({
                     </label>
                     <select
                       value={notifyAdvance}
-                      onChange={(e) => setNotifyAdvance(e.target.value as any)}
+                      onChange={(e) => setNotifyAdvance(e.target.value as "same_day" | "1_day_before" | "7_days_before")}
                       className="w-full text-xs p-2 rounded-xl border border-stone-200 bg-[#FAF8F5] font-medium focus:bg-white focus:outline-[#154734]"
                     >
                       <option value="same_day">On the day (Morning of)</option>
@@ -775,7 +775,7 @@ export const SetFollowUpModal: React.FC<SetFollowUpModalProps> = ({
                       </label>
                       <select
                         value={customIntervalUnit}
-                        onChange={(e) => setCustomIntervalUnit(e.target.value as any)}
+                        onChange={(e) => setCustomIntervalUnit(e.target.value as "minutes" | "hours" | "days")}
                         className="w-full p-2 bg-[#FAF8F5] border border-stone-300 rounded-xl font-bold text-xs text-slate-900 focus:bg-white focus:outline-[#154734]"
                       >
                         <option value="minutes">Minutes</option>
@@ -794,16 +794,18 @@ export const SetFollowUpModal: React.FC<SetFollowUpModalProps> = ({
                 </label>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {[
-                    { id: "indefinite", label: "Until stopped" },
-                    { id: "doses", label: "Number of doses" },
-                    { id: "days", label: "Number of days" },
-                    { id: "end_date", label: "End date" },
-                  ].map((d) => (
+                  {(
+                    [
+                      { id: "indefinite", label: "Until stopped" },
+                      { id: "doses", label: "Number of doses" },
+                      { id: "days", label: "Number of days" },
+                      { id: "end_date", label: "End date" },
+                    ] as const
+                  ).map((d) => (
                     <button
                       key={d.id}
                       type="button"
-                      onClick={() => setDurationType(d.id as any)}
+                      onClick={() => setDurationType(d.id)}
                       className={`p-2 rounded-xl text-[10px] font-bold border text-center transition-all cursor-pointer ${
                         durationType === d.id
                           ? "bg-[#154734] text-white border-[#154734]"

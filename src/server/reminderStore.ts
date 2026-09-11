@@ -51,6 +51,9 @@ export interface StoredServerReminder {
   dosesGiven?: number;
   lastTriggeredAt?: number;
   nextTriggerTimestamp?: number;
+  // Compatibility aliases
+  id?: string;
+  animalProfileId?: string;
 }
 
 // In-memory + persistent Firestore & file store for server reminders
@@ -63,7 +66,7 @@ function loadStoredRemindersFromFile() {
       const data = JSON.parse(fs.readFileSync(REMINDERS_FILE_PATH, "utf-8"));
       if (Array.isArray(data)) {
         data.forEach((item: StoredServerReminder) => {
-          remindersMap.set(item.reminderId || (item as any).id, item);
+          remindersMap.set(item.reminderId || item.id || "", item);
         });
       }
     }
@@ -463,7 +466,7 @@ export function deleteServerRemindersForAnimal(animalId: string, userId?: string
   let count = 0;
   for (const [id, rem] of remindersMap.entries()) {
     if (
-      (rem.animalId === animalId || (rem as any).animalProfileId === animalId) &&
+      (rem.animalId === animalId || rem.animalProfileId === animalId) &&
       (!userId || rem.userId === userId)
     ) {
       remindersMap.delete(id);

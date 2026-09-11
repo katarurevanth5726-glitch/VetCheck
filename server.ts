@@ -55,14 +55,15 @@ app.use(apiRoutesRouter);
 app.use(notificationRouter);
 
 // Verified Gemini Multimodal Candidate Models (Primary -> Fallbacks)
-const DEFAULT_CANDIDATE_MODELS: string[] = [
-  process.env.GEMINI_MODEL,
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-].filter(Boolean) as string[];
+const DEFAULT_CANDIDATE_MODELS: string[] = Array.from(
+  new Set(
+    [
+      process.env.GEMINI_MODEL,
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+    ].filter(Boolean)
+  )
+) as string[];
 
 // Safe helper to obtain active Gemini API Key
 function getApiKey(): string {
@@ -76,16 +77,24 @@ function getApiKey(): string {
   return "";
 }
 
-// Robust MIME detection and base64 extraction helper
+// Robust, high-performance MIME detection and base64 extraction helper without regex backtracking
 function parseBase64Image(raw: string, defaultMime = "image/jpeg"): { mimeType: string; data: string } {
   if (!raw || typeof raw !== "string") {
     return { mimeType: defaultMime, data: "" };
   }
-  const match = raw.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.*)$/s);
-  if (match) {
-    return { mimeType: match[1], data: match[2].trim() };
+  
+  if (raw.startsWith("data:")) {
+    const commaIdx = raw.indexOf(",");
+    if (commaIdx !== -1) {
+      const header = raw.slice(5, commaIdx); // e.g. "image/jpeg;base64"
+      const data = raw.slice(commaIdx + 1).trim();
+      const semiIdx = header.indexOf(";");
+      const mimeType = semiIdx !== -1 ? header.slice(0, semiIdx) : header || defaultMime;
+      return { mimeType, data };
+    }
   }
-  const clean = raw.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
+
+  const clean = raw.trim();
   let mime = defaultMime;
   if (clean.startsWith("/9j/")) mime = "image/jpeg";
   else if (clean.startsWith("iVBORw0KGgo")) mime = "image/png";
@@ -140,8 +149,11 @@ async function generateWithModelFallback({
     const modelStart = Date.now();
 
     try {
-      console.log(`[VetCheck] Gemini model: ${model} | Attempt ${i + 1} of ${candidateModels.length}${isFallback ? " (Fallback)" : " (Primary)"}`);
-      console.log(`[VetCheck] Gemini request started`);
+      console.log(
+        `[VetCheck Server Timing] Gemini request start (Model: ${model}, Attempt ${i + 1}/${candidateModels.length}${
+          isFallback ? " [Fallback]" : " [Primary]"
+        })`
+      );
       
       const response = await ai.models.generateContent({
         model,
@@ -150,6 +162,9 @@ async function generateWithModelFallback({
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: jsonSchema,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
         },
       });
 
@@ -157,7 +172,7 @@ async function generateWithModelFallback({
       const text = response.text || "";
 
       if (text) {
-        console.log(`[VetCheck] Gemini response received successfully from ${model} in ${duration}ms`);
+        console.log(`[VetCheck Server Timing] Gemini: ${duration} ms (Model: ${model})`);
         return { text, modelUsed: model, durationMs: duration };
       } else {
         throw new Error(`Empty response received from Gemini model ${model}.`);
@@ -169,7 +184,7 @@ async function generateWithModelFallback({
       const statusCode = typeof err?.status === "number" ? err.status : typeof err?.code === "number" ? err.code : 500;
       const errorCode = err?.code || (statusCode === 404 ? "MODEL_NOT_FOUND" : "GEMINI_ERROR");
 
-      console.error(`[VetCheck] Gemini error on model ${model} after ${duration}ms | Status: ${statusCode} | Code: ${errorCode} | Message: ${msg}`);
+      console.error(`[VetCheck Server] Gemini error on model ${model} after ${duration}ms | Status: ${statusCode} | Code: ${errorCode} | Message: ${msg}`);
 
       // Immediate stop for non-retryable errors
       if (/safety|blocked|harm/i.test(msg)) {
@@ -196,7 +211,7 @@ async function generateWithModelFallback({
 
       // If we have a fallback model available and haven't tried it yet, try next fallback
       if (i < candidateModels.length - 1) {
-        console.log(`[VetCheck] Switching to fallback model: ${candidateModels[i + 1]}`);
+        console.warn(`[VetCheck Server] Switching to fallback model: ${candidateModels[i + 1]}`);
         continue;
       }
     }
@@ -214,7 +229,7 @@ app.get("/api/health", (req, res) => {
     timestamp: new Date().toISOString(),
     service: "VetCheck API",
     models: DEFAULT_CANDIDATE_MODELS,
-    primaryModel: DEFAULT_CANDIDATE_MODELS[0] || "gemini-3.6-flash",
+    primaryModel: DEFAULT_CANDIDATE_MODELS[0] || "gemini-2.5-flash",
     fallbackModels: DEFAULT_CANDIDATE_MODELS.slice(1),
     geminiConfigured: apiKeyConfigured,
   });
@@ -530,6 +545,8 @@ Respond strictly in structured JSON.`;
 // Veterinary Image Screening Analysis Endpoint (Streamlined Single Multimodal Request)
 app.post("/api/analyze", async (req, res) => {
   const requestStartTime = Date.now();
+  console.log(`[VetCheck Server Timing] Request received`);
+
   const {
     imageBase64,
     images,
@@ -543,7 +560,7 @@ app.post("/api/analyze", async (req, res) => {
 
   if (!getApiKey()) {
     console.error("[VetCheck] Gemini error status: 401 | Reason: GEMINI_API_KEY is missing or unconfigured");
-    console.log(`[VetCheck] Total analysis time: ${Date.now() - requestStartTime} ms | Status: 401`);
+    console.log(`[VetCheck Server Timing] Total: ${Date.now() - requestStartTime} ms | Status: 401`);
     return res.status(401).json({
       success: false,
       code: "API_KEY_MISSING",
@@ -552,7 +569,8 @@ app.post("/api/analyze", async (req, res) => {
     });
   }
 
-  // Collect all provided unique images (up to 3) for the multimodal request with exact MIME detection
+  const imagePrepStart = Date.now();
+  // Collect all provided unique images (up to 3) for the multimodal request with fast MIME detection
   const imageParts: any[] = [];
   const mimeTypes: string[] = [];
 
@@ -585,8 +603,11 @@ app.post("/api/analyze", async (req, res) => {
     }
   }
 
+  const imagePrepDuration = Date.now() - imagePrepStart;
+  console.log(`[VetCheck Server Timing] Image preparation: ${imagePrepDuration} ms`);
+
   if (imageParts.length === 0) {
-    console.warn(`[VetCheck] ANALYZE request received with 0 valid images | Duration: ${Date.now() - requestStartTime} ms | Status: 400`);
+    console.warn(`[VetCheck Server Timing] Total: ${Date.now() - requestStartTime} ms | Status: 400 (0 valid images)`);
     return res.status(400).json({
       success: false,
       code: "INVALID_PAYLOAD",
@@ -599,25 +620,25 @@ app.post("/api/analyze", async (req, res) => {
   const totalImageBytes = imageParts.reduce((acc, part) => acc + Math.round((part.inlineData.data.length * 3) / 4), 0);
 
   console.log(
-    `[VetCheck] ANALYZE request received | Images: ${imageParts.length} | MIMEs: [${mimeTypes.join(", ")}] | Size: ~${Math.round(
+    `[VetCheck Server] ANALYZE request processing | Images: ${imageParts.length} | MIMEs: [${mimeTypes.join(", ")}] | Size: ~${Math.round(
       totalImageBytes / 1024
     )} KB | Animal: ${selectedAnimal || "not specified"} | Lang: ${language} (${languageName})`
   );
 
-  // 1. Precise Analysis Instruction with Animal & Clinical Injury Screening
-  let systemInstruction = `Perform preliminary visual screening of the animal in the provided photos. 
-CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
-- Supported animals include: Domestic pets (Dogs, Cats, Rabbits), Livestock & Farm Animals (Cows, Buffaloes, Goats, Sheep, Horses, Donkeys, Pigs, Poultry/Chickens, Ducks), and working animals.
-- Close-up or macro photos of animal skin conditions, wounds, cuts, lacerations, skin rashes, redness, dermatitis, fur loss, mange, fungal lesions, eye infections, ear discharge, mouth lesions, paw injuries, or surgical sites MUST BE ACCEPTED and screened for visible clinical signs.
-- If the image contains a human holding or examining an animal, focus EXCLUSIVELY on the animal. NEVER diagnose or provide health assessments for humans.
-- If the image contains ONLY a human (selfie, human face, human skin) OR ONLY an inanimate object (car, building, food, screenshot, document, blank), you MUST set validImage: false, isHumanOnly: true (if human), detectedAnimal: "None", possibleConditions: [], visibleSigns: [], immediateCare: [], warningSigns: [].
-- If a valid animal or animal lesion is visible: Identify observable visible signs and provide cautious possible differential conditions. Do not provide a confirmed diagnosis, prescription medicine or dosage. Return concise structured JSON.`;
+  // 1. Precise Analysis Instruction with Animal & Clinical Injury Screening (Token Optimized)
+  let systemInstruction = `Perform preliminary visual health screening of the animal in the provided photos.
+CRITICAL RULES:
+- Strictly animal health screening: Domestic pets (Dogs, Cats, Rabbits), Livestock/Farm animals (Cows, Buffaloes, Goats, Sheep, Horses, Donkeys, Pigs, Poultry, Ducks), and working animals.
+- Close-up/macro photos of skin lesions, wounds, rashes, infections, eye/ear/mouth/paw injuries MUST be accepted and screened.
+- If human is present or holding animal, focus ONLY on the animal. Never diagnose humans.
+- If image contains ONLY a human OR ONLY an inanimate object, set validImage: false, isHumanOnly: true (if human), detectedAnimal: "None", possibleConditions: [], visibleSigns: [], immediateCare: [], warningSigns: [].
+- If animal/lesion is visible: Provide observable visible signs and cautious differential conditions with confidence ratings. Do not provide confirmed diagnosis or prescription medication dosages. Return strictly structured JSON.`;
 
   if (language && language !== "en" && languageName && languageName !== "English") {
     systemInstruction += ` Translate all user-facing string values into ${languageName}. Keep all JSON property names in English.`;
   }
 
-  // 2. Short User Context (Include optional user-entered animal/symptoms only)
+  // 2. Concise User Context
   let userText = "Perform preliminary visual health screening for this animal photo.";
   if (selectedAnimal && typeof selectedAnimal === "string" && selectedAnimal.trim()) {
     userText += `\nAnimal: ${selectedAnimal.trim()}`;
@@ -717,7 +738,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
   ];
 
   let rawResponseText = "";
-  let modelUsed = DEFAULT_CANDIDATE_MODELS[0] || "gemini-3.6-flash";
+  let modelUsed = DEFAULT_CANDIDATE_MODELS[0] || "gemini-2.5-flash";
   let geminiDuration = 0;
 
   try {
@@ -735,8 +756,8 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
     const msg = err?.message || "Analysis could not be completed.";
     const duration = Date.now() - requestStartTime;
 
-    console.error(`[VetCheck] Gemini analysis failed after ${duration}ms | Status: ${statusCode} | Error: ${msg}`);
-    console.log(`[VetCheck] Total analysis time: ${duration} ms`);
+    console.error(`[VetCheck Server] Gemini analysis failed after ${duration}ms | Status: ${statusCode} | Error: ${msg}`);
+    console.log(`[VetCheck Server Timing] Total: ${duration} ms | Failed`);
 
     if (err?.code === "SAFETY_BLOCK" || /safety|blocked|harm/i.test(msg)) {
       return res.status(400).json({
@@ -813,8 +834,8 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
   }
 
   if (!rawResponseText) {
-    console.error(`[VetCheck] Gemini error status: 500 (Empty AI response)`);
-    console.log(`[VetCheck] Total analysis time: ${Date.now() - requestStartTime} ms`);
+    console.error(`[VetCheck Server] Gemini empty AI response`);
+    console.log(`[VetCheck Server Timing] Total: ${Date.now() - requestStartTime} ms`);
     return res.status(500).json({
       success: false,
       code: "EMPTY_RESPONSE",
@@ -824,7 +845,7 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
   }
 
   try {
-    const parseStart = Date.now();
+    const responseProcessingStart = Date.now();
     let parsed: any;
     const sanitizedRaw = rawResponseText.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     try {
@@ -837,10 +858,6 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
         throw new Error("Invalid response format received from AI model.");
       }
     }
-    const jsonParseDuration = Date.now() - parseStart;
-    const totalDuration = Date.now() - requestStartTime;
-
-    console.log(`[VetCheck] Total analysis time: ${totalDuration} ms`);
 
     // Dangerous medication and chemical sanitizer
     const DANGEROUS_SUBSTANCE_REGEX = /(ivermectin|amoxicillin|enrofloxacin|oxytetracycline|dexamethasone|prednisolone|meloxicam\s+\d+|paracetamol|ibuprofen|tylenol|aspirin|motor\s+oil|engine\s+oil|battery\s+acid|brake\s+fluid|kerosene|diesel|caustic)/gi;
@@ -861,6 +878,10 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
         ? "Please upload a clear photo of an animal. Human photos cannot be analyzed by VetCheck."
         : "Please upload a clear animal photo.";
 
+      const responseProcessingDuration = Date.now() - responseProcessingStart;
+      const totalDuration = Date.now() - requestStartTime;
+      console.log(`[VetCheck Server Timing] Response processing: ${responseProcessingDuration} ms`);
+      console.log(`[VetCheck Server Timing] Total: ${totalDuration} ms`);
       console.warn(`[VetCheck Server] Analysis rejected non-animal image: isHumanOnly=${isHumanOnly}, detectedAnimal=${parsed.detectedAnimal}`);
       return res.status(422).json({
         success: false,
@@ -899,6 +920,25 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
       description: sanitize(c.reason || ""),
       likelihood: ["Low", "Medium", "High"].includes(c.confidence) ? c.confidence : "Medium",
     }));
+
+    const responseProcessingDuration = Date.now() - responseProcessingStart;
+    const totalDuration = Date.now() - requestStartTime;
+
+    console.log(`[VetCheck Server Timing] Response processing: ${responseProcessingDuration} ms`);
+    console.log(`[VetCheck Server Timing] Total: ${totalDuration} ms`);
+
+    const serverTiming = {
+      imagePrepMs: imagePrepDuration,
+      geminiMs: geminiDuration,
+      responseProcessingMs: responseProcessingDuration,
+      totalMs: totalDuration,
+      modelUsed,
+    };
+
+    res.setHeader(
+      "Server-Timing",
+      `imgPrep;dur=${imagePrepDuration}, gemini;dur=${geminiDuration}, respProc;dur=${responseProcessingDuration}, total;dur=${totalDuration}`
+    );
 
     const resultPayload = {
       validAnimalImage: validImg,
@@ -953,16 +993,20 @@ CRITICAL MANDATE: VetCheck is STRICTLY an animal health screening tool.
         issues: [],
         retakeRecommended: !validImg,
       },
+      serverTiming,
     };
 
     return res.json({
       success: true,
       analysis: resultPayload,
       result: resultPayload,
+      serverTiming,
       ...resultPayload,
     });
   } catch (parseError: any) {
     console.error("[VetCheck Server] JSON Parse Error:", parseError);
+    const totalDuration = Date.now() - requestStartTime;
+    console.log(`[VetCheck Server Timing] Total: ${totalDuration} ms | JSON Parse Error`);
     return res.status(500).json({
       success: false,
       code: "JSON_PARSE_ERROR",

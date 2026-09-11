@@ -265,13 +265,13 @@ export async function syncAnimalToBackend(animal: AnimalProfile | { id: string }
   }
 }
 
-export async function syncScanToBackend(scan: ScreeningRecord, action: "save" | "delete"): Promise<void> {
+export async function syncScanToBackend(scan: ScreeningRecord | { id: string }, action: "save" | "delete"): Promise<void> {
   const userId = getOrCreateAnonymousUserId();
   try {
     if (action === "delete") {
       await safeApiCall(`/api/scans/${encodeURIComponent(scan.id)}`, "DELETE");
     } else {
-      directSaveScanToFirestore(scan, userId);
+      directSaveScanToFirestore(scan as ScreeningRecord, userId);
       await safeApiCall("/api/scans", "POST", scan);
     }
   } catch (err) {
@@ -279,17 +279,18 @@ export async function syncScanToBackend(scan: ScreeningRecord, action: "save" | 
   }
 }
 
-export async function syncReminderToBackend(reminder: CareReminder, action: "save" | "delete"): Promise<void> {
+export async function syncReminderToBackend(reminder: CareReminder | { id: string }, action: "save" | "delete"): Promise<void> {
   const userId = getOrCreateAnonymousUserId();
   try {
     if (action === "delete") {
       directDeleteReminderFromFirestore(reminder.id);
       await safeApiCall(`/api/reminders/${encodeURIComponent(reminder.id)}`, "DELETE");
     } else {
-      directSaveReminderToFirestore(reminder, userId);
+      const fullReminder = reminder as CareReminder;
+      directSaveReminderToFirestore(fullReminder, userId);
       await safeApiCall("/api/reminders", "POST", {
-        ...reminder,
-        scheduledDate: reminder.dueDate,
+        ...fullReminder,
+        scheduledDate: fullReminder.dueDate,
       });
     }
   } catch (err) {
@@ -297,13 +298,13 @@ export async function syncReminderToBackend(reminder: CareReminder, action: "sav
   }
 }
 
-export async function syncPrescriptionToBackend(prescription: VeterinaryPrescription, action: "save" | "delete"): Promise<void> {
+export async function syncPrescriptionToBackend(prescription: VeterinaryPrescription | { id: string }, action: "save" | "delete"): Promise<void> {
   const userId = getOrCreateAnonymousUserId();
   try {
     if (action === "delete") {
       await safeApiCall(`/api/prescriptions/${encodeURIComponent(prescription.id)}`, "DELETE");
     } else {
-      directSavePrescriptionToFirestore(prescription, userId);
+      directSavePrescriptionToFirestore(prescription as VeterinaryPrescription, userId);
       await safeApiCall("/api/prescriptions", "POST", prescription);
     }
   } catch (err) {
@@ -311,13 +312,13 @@ export async function syncPrescriptionToBackend(prescription: VeterinaryPrescrip
   }
 }
 
-export async function syncVetVisitToBackend(visit: VetVisit, action: "save" | "delete"): Promise<void> {
+export async function syncVetVisitToBackend(visit: VetVisit | { id: string }, action: "save" | "delete"): Promise<void> {
   const userId = getOrCreateAnonymousUserId();
   try {
     if (action === "delete") {
       await safeApiCall(`/api/vet-visits/${encodeURIComponent(visit.id)}`, "DELETE");
     } else {
-      directSaveVetVisitToFirestore(visit, userId);
+      directSaveVetVisitToFirestore(visit as VetVisit, userId);
       await safeApiCall("/api/vet-visits", "POST", visit);
     }
   } catch (err) {

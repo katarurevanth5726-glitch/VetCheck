@@ -86,7 +86,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const refreshReminders = () => {
     try {
       const activeReminders = getUpcomingAndOverdueReminders();
-      setReminders(activeReminders.allActive || (Array.isArray(activeReminders) ? (activeReminders as any) : []));
+      setReminders(activeReminders.allActive || []);
       setProfiles(getStoredAnimalProfiles());
     } catch (e) {
       console.warn("Could not load care reminders for home:", e);

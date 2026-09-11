@@ -1066,7 +1066,7 @@ export const LearnScreen: React.FC<LearnScreenProps> = ({
                     <label className="text-[11px] font-bold text-slate-700">Activity Type:</label>
                     <select
                       value={reminderType}
-                      onChange={(e) => setReminderType(e.target.value as any)}
+                      onChange={(e) => setReminderType(e.target.value as CareReminder["reminderType"])}
                       className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs font-semibold"
                     >
                       <option value="vaccination">Vaccination (Immunization)</option>

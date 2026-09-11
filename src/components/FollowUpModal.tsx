@@ -289,15 +289,17 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
               2. Is the animal eating and drinking normally?
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: "yes", label: "Yes (Normal appetite)" },
-                { id: "partial", label: "Partial / Reduced" },
-                { id: "no", label: "No (Refusing food/water)" },
-              ].map((item) => (
+              {(
+                [
+                  { id: "yes", label: "Yes (Normal appetite)" },
+                  { id: "partial", label: "Partial / Reduced" },
+                  { id: "no", label: "No (Refusing food/water)" },
+                ] as const
+              ).map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setIsEatingDrinking(item.id as any)}
+                  onClick={() => setIsEatingDrinking(item.id)}
                   className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                     isEatingDrinking === item.id
                       ? "bg-teal-600 text-white border-teal-600 shadow-2xs"
@@ -316,15 +318,17 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
               3. Has a veterinarian been consulted?
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: "no", label: "Not Yet" },
-                { id: "scheduled", label: "Appointment Booked" },
-                { id: "yes", label: "Yes, Vet Examined" },
-              ].map((item) => (
+              {(
+                [
+                  { id: "no", label: "Not Yet" },
+                  { id: "scheduled", label: "Appointment Booked" },
+                  { id: "yes", label: "Yes, Vet Examined" },
+                ] as const
+              ).map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setVetConsulted(item.id as any)}
+                  onClick={() => setVetConsulted(item.id)}
                   className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                     vetConsulted === item.id
                       ? "bg-teal-600 text-white border-teal-600 shadow-2xs"

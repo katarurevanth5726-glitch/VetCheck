@@ -657,7 +657,7 @@ function AppContent() {
             },
             signal: analyzeController.signal,
             body: JSON.stringify({
-              imageBase64: cleanBase64,
+              imageBase64: cleanImages.length > 0 ? undefined : cleanBase64,
               images: cleanImages.length > 0 ? cleanImages : undefined,
               mimeType: "image/jpeg",
               selectedAnimal: payload.selectedAnimal,
@@ -670,6 +670,7 @@ function AppContent() {
           });
           const fetchDuration = Date.now() - fetchStart;
           console.log(`[VetCheck Timing] /api/analyze response received in ${fetchDuration} ms (Status: ${res.status})`);
+          (res as Response & { __fetchDuration?: number }).__fetchDuration = fetchDuration;
           return res;
         } catch (fetchErr: any) {
           if (analyzeTimedOut) {
@@ -735,8 +736,20 @@ function AppContent() {
         if (contentType.includes("application/json")) {
           try {
             const rawJson = await response.json();
+            const fetchDuration = (response as Response & { __fetchDuration?: number }).__fetchDuration || (Date.now() - requestStart);
+            const serverTiming = rawJson?.serverTiming;
+            const totalDuration = Date.now() - requestStartTime;
+            const networkLatency = Math.max(0, fetchDuration - (serverTiming?.totalMs || 0));
 
-            // Safe diagnostic logging of response shape (Requirement 1)
+            // Granular timing breakdown
+            console.log("[VetCheck Timing Breakdown]");
+            console.log(`  CLIENT → SERVER / Network: ~${networkLatency} ms`);
+            console.log(`  SERVER → GEMINI (AI model: ${serverTiming?.modelUsed || "default"}): ${serverTiming?.geminiMs ?? "N/A"} ms`);
+            console.log(`  GEMINI → SERVER (Processing): ${serverTiming?.responseProcessingMs ?? "N/A"} ms`);
+            console.log(`  SERVER → CLIENT (HTTP Roundtrip): ${fetchDuration} ms`);
+            console.log(`  TOTAL SCREENING TIME: ${totalDuration} ms`);
+
+            // Safe diagnostic logging of response shape
             console.log("[VetCheck Client] /api/analyze response JSON keys:", rawJson ? Object.keys(rawJson) : []);
             console.log("[VetCheck Client] /api/analyze response status summary:", {
               success: rawJson?.success,
@@ -787,7 +800,10 @@ function AppContent() {
 
             if (payload && typeof payload === "object") {
               const rawSev = payload.severity || rawJson?.severity || "Mild";
-              const validSev = ["Mild", "Moderate", "Serious", "Emergency"].includes(rawSev) ? rawSev : "Mild";
+              const validSev: "Mild" | "Moderate" | "Serious" | "Emergency" =
+                rawSev === "Mild" || rawSev === "Moderate" || rawSev === "Serious" || rawSev === "Emergency"
+                  ? rawSev
+                  : "Mild";
               const animalName = payload.animalType ||
                 (typeof payload.detectedAnimal === "object" ? payload.detectedAnimal?.name : payload.detectedAnimal) ||
                 rawJson?.animalType ||
@@ -808,7 +824,7 @@ function AppContent() {
                 affectedBodyArea: payload.affectedBodyArea || payload.bodyArea || "Skin / Body",
                 visibleSigns: Array.isArray(payload.visibleSigns) ? payload.visibleSigns : [],
                 possibleConditions: Array.isArray(payload.possibleConditions) ? payload.possibleConditions : [],
-                severity: validSev as any,
+                severity: validSev,
                 severityReason: payload.severityReason || `Assessed as ${validSev} based on visual presentation.`,
                 simpleExplanation: payload.simpleExplanation || payload.disclaimer || "Preliminary AI screening.",
                 immediateCare: Array.isArray(payload.immediateCare) ? payload.immediateCare : (Array.isArray(payload.safeImmediateCareSteps) ? payload.safeImmediateCareSteps : []),
@@ -1105,7 +1121,7 @@ function AppContent() {
           },
           signal: controller.signal,
           body: JSON.stringify({
-            imageBase64: base64Data,
+            imageBase64: cleanImages.length > 0 ? undefined : base64Data,
             images: cleanImages.length > 0 ? cleanImages : undefined,
             mimeType: "image/jpeg",
             selectedAnimal: updatedAnimal,
@@ -1164,7 +1180,10 @@ function AppContent() {
 
             if (payload && typeof payload === "object") {
               const rawSev = payload.severity || rawJson?.severity || "Mild";
-              const validSev = ["Mild", "Moderate", "Serious", "Emergency"].includes(rawSev) ? rawSev : "Mild";
+              const validSev: "Mild" | "Moderate" | "Serious" | "Emergency" =
+                rawSev === "Mild" || rawSev === "Moderate" || rawSev === "Serious" || rawSev === "Emergency"
+                  ? rawSev
+                  : "Mild";
               const animalName = payload.animalType ||
                 (typeof payload.detectedAnimal === "object" ? payload.detectedAnimal?.name : payload.detectedAnimal) ||
                 rawJson?.animalType ||
@@ -1185,7 +1204,7 @@ function AppContent() {
                 affectedBodyArea: payload.affectedBodyArea || updatedBodyArea || "Skin / Body",
                 visibleSigns: Array.isArray(payload.visibleSigns) ? payload.visibleSigns : [],
                 possibleConditions: Array.isArray(payload.possibleConditions) ? payload.possibleConditions : [],
-                severity: validSev as any,
+                severity: validSev,
                 severityReason: payload.severityReason || `Assessed as ${validSev} based on visual presentation.`,
                 simpleExplanation: payload.simpleExplanation || payload.disclaimer || "Preliminary AI screening.",
                 immediateCare: Array.isArray(payload.immediateCare) ? payload.immediateCare : (Array.isArray(payload.safeImmediateCareSteps) ? payload.safeImmediateCareSteps : []),

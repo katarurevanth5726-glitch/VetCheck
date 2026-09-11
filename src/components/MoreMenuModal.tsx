@@ -27,6 +27,23 @@ interface MoreMenuModalProps {
   historyCount?: number;
 }
 
+interface MenuItem {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconBg: string;
+  badge?: string;
+  badgeColor?: string;
+  tab?: NavTab;
+  action?: () => void;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
 export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
   isOpen,
   onClose,
@@ -60,12 +77,13 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
     onClose();
   };
 
-  const menuSections = [
+  const menuSections: MenuSection[] = [
     {
       title: "Animal Care & Tracking",
       items: [
         {
-          id: "my-animals" as NavTab,
+          id: "my-animals",
+          tab: "my-animals",
           label: "My Animals",
           description: "Manage animal profiles, age, weight, and vaccination history",
           icon: PawPrint,
@@ -73,7 +91,8 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
           badge: animalCount > 0 ? `${animalCount} registered` : undefined,
         },
         {
-          id: "history" as NavTab,
+          id: "history",
+          tab: "history",
           label: "Follow-ups & History",
           description: "Review past screening records, photo comparisons & wellness logs",
           icon: Clock,
@@ -81,7 +100,8 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
           badge: historyCount > 0 ? `${historyCount} records` : undefined,
         },
         {
-          id: "learn" as NavTab,
+          id: "learn",
+          tab: "learn",
           label: "Learn & Prevent",
           description: "Preventive care, feed hygiene, seasonal health tips & daily checklist",
           icon: BookOpen,
@@ -93,7 +113,7 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
       title: "Nearby Services & Facilities",
       items: [
         {
-          id: "nearby-salons" as any,
+          id: "nearby-salons",
           label: "Nearby Pet Salons & Grooming",
           description: "Locate pet spas, dog/cat grooming centers and call directly",
           icon: Scissors,
@@ -104,7 +124,7 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
           },
         },
         {
-          id: "nearby-vet" as any,
+          id: "nearby-vet",
           label: "Nearby Veterinary Hospitals",
           description: "Search government polyclinics, vet dispensaries & emergency clinics",
           icon: MapPin,
@@ -120,7 +140,8 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
       title: "Smart India Hackathon & Evaluation",
       items: [
         {
-          id: "about" as NavTab,
+          id: "about",
+          tab: "about",
           label: "About Project (SIH Dossier)",
           description: "Team details, problem statement ID, GitHub repository & innovation dossier",
           icon: Info,
@@ -132,14 +153,16 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
       title: "Account & Preferences",
       items: [
         {
-          id: "profile" as NavTab,
+          id: "profile",
+          tab: "profile",
           label: "User Profile",
           description: "Farmer / pet owner status, location and livestock holdings",
           icon: User,
           iconBg: "bg-slate-700",
         },
         {
-          id: "settings" as NavTab,
+          id: "settings",
+          tab: "settings",
           label: "Settings & Languages",
           description: "10+ regional languages, Voice TTS speed, display & accessibility options",
           icon: Settings,
@@ -190,10 +213,10 @@ export const MoreMenuModal: React.FC<MoreMenuModalProps> = ({
                     <button
                       key={item.id}
                       onClick={() => {
-                        if ((item as any).action) {
-                          (item as any).action();
-                        } else {
-                          handleNavigate(item.id as NavTab);
+                        if (item.action) {
+                          item.action();
+                        } else if (item.tab) {
+                          handleNavigate(item.tab);
                         }
                       }}
                       className="w-full p-3 rounded-2xl border border-slate-200/80 hover:border-teal-300 hover:bg-teal-50/40 transition-all duration-150 flex items-center justify-between text-left group cursor-pointer"

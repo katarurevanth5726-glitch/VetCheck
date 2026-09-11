@@ -1146,16 +1146,18 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                           {idx + 1}. {q.question}
                         </p>
                         <div className="grid grid-cols-4 gap-1">
-                          {[
-                            { id: "yes", label: "Yes" },
-                            { id: "no", label: "No" },
-                            { id: "unknown", label: "Not Sure" },
-                            { id: "skip", label: "Skip" },
-                          ].map((opt) => (
+                          {(
+                            [
+                              { id: "yes", label: "Yes" },
+                              { id: "no", label: "No" },
+                              { id: "unknown", label: "Not Sure" },
+                              { id: "skip", label: "Skip" },
+                            ] as const
+                          ).map((opt) => (
                             <button
                               key={opt.id}
                               type="button"
-                              onClick={() => handleAnswerQuestion(q, opt.id as any)}
+                              onClick={() => handleAnswerQuestion(q, opt.id)}
                               className={`py-1 text-[11px] font-semibold rounded border transition-colors cursor-pointer ${
                                 currentAns === opt.id
                                   ? "bg-[#315C4C] text-white border-[#315C4C]"
@@ -1239,16 +1241,18 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { id: "helpful", label: "👍 Helpful" },
-                    { id: "not_helpful", label: "👎 Needs Improvement" },
-                    { id: "incorrect_animal", label: "🐾 Wrong Animal" },
-                    { id: "difficult_to_understand", label: "❓ Difficult to Read" },
-                  ].map((opt) => (
+                  {(
+                    [
+                      { id: "helpful", label: "👍 Helpful" },
+                      { id: "not_helpful", label: "👎 Needs Improvement" },
+                      { id: "incorrect_animal", label: "🐾 Wrong Animal" },
+                      { id: "difficult_to_understand", label: "❓ Difficult to Read" },
+                    ] as const
+                  ).map((opt) => (
                     <button
                       key={opt.id}
                       type="button"
-                      onClick={() => handleSubmitFeedback(opt.id as any)}
+                      onClick={() => handleSubmitFeedback(opt.id)}
                       className="py-1.5 px-2 text-xs font-medium rounded-lg border border-[#E5E3DC] bg-white hover:bg-[#FAF9F5] text-[#252A27] text-center cursor-pointer"
                     >
                       {opt.label}
